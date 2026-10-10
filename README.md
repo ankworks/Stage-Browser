@@ -24,6 +24,9 @@ Developed by [AnkWorks](https://github.com/ankworks) as an independent side proj
 </div>
 
 ---
+<div align="center">
+<img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/09af4782-061a-4233-a9f0-f86144969fef" />
+</div>
 
 ## 🌱 About Stage Browser
 
