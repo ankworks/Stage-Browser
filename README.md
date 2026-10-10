@@ -1,25 +1,22 @@
 <div align="center">
 
-# 📚 Stage Browser
+# Stage Browser
 
 ### A better space to learn.
 
-**A lightweight, minimal browser designed for studying, learning, and staying focused.**
-
-Developed by [AnkWorks](https://github.com/ankworks) as an independent side project.
+**A lightweight browser designed for studying, learning, and staying focused.**
 
 <br>
 
-![Status](https://img.shields.io/badge/Status-Experimental-F59E0B?style=flat-square)
-![Focus](https://img.shields.io/badge/Focus-Education-22C55E?style=flat-square)
-![Project](https://img.shields.io/badge/Project-AnkWorks_Side_Project-6366F1?style=flat-square)
-![License](https://img.shields.io/badge/License-BSD--3--Clause-3B82F6?style=flat-square)
+[![Download Stage Browser](https://img.shields.io/badge/Download-V1.0.0-22C55E?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ankworks/Stage-Browser/releases/tag/V1.0.0)
+
+[![Source Code](https://img.shields.io/badge/Source-GitHub-18181B?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ankworks/Stage-Browser)
+
+[![Report Issue](https://img.shields.io/badge/Feedback-Issues-6366F1?style=for-the-badge&logo=github&logoColor=white)](https://github.com/ankworks/Stage-Browser/issues)
 
 <br>
 
-[**Explore Source Code**](https://github.com/ankworks/Stage-Browser) ·
-[**Report an Issue**](https://github.com/ankworks/Stage-Browser/issues) ·
-[**AnkWorks**](https://works.ankb.qzz.io)
+**Windows Available** · **Experimental Release** · **Made by AnkWorks**
 
 </div>
 
@@ -214,6 +211,78 @@ Stage Browser is one of its experimental side projects.
 - **Repository:** https://github.com/ankworks/Stage-Browser
 
 ---
+
+## ✦ Download Stage Browser
+
+### Your learning space is ready.
+
+Experience a simpler way to browse the web with **Stage Browser V1.0.0**.
+
+Choose the version that works best for you.
+
+<br>
+
+<div align="center">
+
+| 📦 Windows Installer | 🪶 Windows Portable |
+|:---:|:---:|
+| **Stage Browser V1.0.0** | **Stage Browser V1.0.0** |
+| Install Stage Browser on your computer. | Run Stage Browser without a traditional installation. |
+| Recommended for everyday use. | Ideal for trying Stage or using it without installing. |
+| **75.4 MB** | **75.2 MB** |
+| [![Download Installer](https://img.shields.io/badge/Download-Installer-2563EB?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ankworks/Stage-Browser/releases/download/V1.0.0/Stage.Browser.Setup.1.0.0.exe) | [![Download Portable](https://img.shields.io/badge/Download-Portable-16A34A?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ankworks/Stage-Browser/releases/download/V1.0.0/Stage.Browser.Portable.1.0.0.exe) |
+
+</div>
+
+<br>
+
+### 🖥️ Platform Availability
+
+| Platform | Availability |
+|:--|:--|
+| 🪟 **Windows** | ✅ V1.0.0 available |
+| 🍎 **macOS** | ⏳ Planned |
+| 🐧 **Linux** | ⏳ Planned |
+
+> [!IMPORTANT]
+> **Experimental Release**
+>
+> Stage Browser V1.0.0 is an early release.
+> Features and compatibility may change as development continues.
+>
+> Please report any issues you encounter.
+
+### 📥 Installation Guide
+
+**Windows Installer**
+
+1. Download `Stage.Browser.Setup.1.0.0.exe`.
+2. Open the downloaded installer.
+3. Follow the installation instructions.
+4. Launch Stage Browser.
+
+**Windows Portable**
+
+1. Download `Stage.Browser.Portable.1.0.0.exe`.
+2. Run the executable.
+3. Start exploring Stage Browser.
+
+> [!NOTE]
+> The portable edition does not require a traditional installation. It may still create application data or temporary files depending on its implementation.
+
+### 🔗 Release Information
+
+- **Version:** `V1.0.0`
+- **Platform:** Windows
+- **Installer size:** 75.4 MB
+- **Portable size:** 75.2 MB
+- **Release:** [Stage Browser V1.0.0](https://github.com/ankworks/Stage-Browser/releases/tag/V1.0.0)
+- **Bug reports:** [GitHub Issues](https://github.com/ankworks/Stage-Browser/issues)
+
+[**View All Releases →**](https://github.com/ankworks/Stage-Browser/releases)
+
+---
+
 
 <div align="center">
 
