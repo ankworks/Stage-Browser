@@ -218,6 +218,23 @@ export const actions = {
     void actions.setSettings({ newTabBackground });
   },
 
+  async pickCustomBackground(): Promise<void> {
+    const next = await api().pickBackground();
+    if (next) store.set({ settings: next });
+  },
+
+  clearCustomBackground(): void {
+    void actions.setSettings({ newTabBackground: 'ink', customBackgroundImage: undefined });
+  },
+
+  setCustomBackgroundDim(dim: number): void {
+    void actions.setSettings({ customBackgroundDim: Math.min(0.85, Math.max(0, dim)) });
+  },
+
+  setCustomBackgroundBlur(blur: number): void {
+    void actions.setSettings({ customBackgroundBlur: Math.min(24, Math.max(0, Math.round(blur))) });
+  },
+
   toggleTheme(): void {
     const current = store.getState().settings.appearance;
     actions.setAppearance(current === 'light' ? 'dark' : 'light');

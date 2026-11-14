@@ -10,12 +10,14 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   session,
   shell,
   type IpcMainInvokeEvent,
   type Session,
 } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { CH, EV } from '../shared/ipc';
 import type { Favorite, HistoryEntry, Settings, TabState } from '../shared/types';
@@ -71,10 +73,6 @@ export class StageApp {
           activeId: this.tabs.list.activeId,
           changed,
         });
-        // Metadata (title, favicon, loading) changes constantly while a page
-        // loads. Re-routing the native views on every one of those caused a
-        // visible white flash. Geometry only changes when tabs are added,
-        // removed or switched.
         if (structure) this.routeViews();
         this.syncInk();
       },
@@ -113,8 +111,6 @@ export class StageApp {
     this.registerIpc();
     this.registerPageIpc();
     this.wireWindow();
-    // One quiet tab by default. Session restore is an explicit opt-in because
-    // the product starts as a single-page study space, not a tab archive.
     const savedTabs = loadState<TabList>('tabs', { tabs: [], activeId: null, closed: [] });
     this.tabs.restore(this.settings.restoreSession ? savedTabs : { tabs: [], activeId: null, closed: [] });
     this.tabs.startSweeper(() => this.tabs.list.activeId);
@@ -138,7 +134,6 @@ export class StageApp {
     ses.setUserAgent(ua);
     ses.setSpellCheckerEnabled(true);
     ses.setPermissionRequestHandler((_wc, permission, callback) => {
-      // A study browser does not need cameras or notifications to read a paper.
       const allowed = permission === 'fullscreen' || permission === 'clipboard-sanitized-write';
       callback(allowed);
     });
@@ -199,8 +194,6 @@ export class StageApp {
   }
 
   private wireWindow(): void {
-    // Re-send geometry once the renderer has mounted (the first send can land
-    // before React subscribes).
     setTimeout(() => this.send(EV.GEOM, { rect: this.contentRect(), maximized: !!this.win?.isMaximized() }), 250);
   }
 
@@ -210,8 +203,6 @@ export class StageApp {
 
   private contentRect() {
     const [width, height] = this.win?.getContentSize() ?? [1280, 800];
-    // One tab = full width. The rail only exists once there is something to
-    // switch between, and main keeps this rule in lockstep with the renderer.
     const rail = this.sidebarVisible() ? SIDEBAR_WIDTH : 0;
     return {
       x: rail,
@@ -241,9 +232,6 @@ export class StageApp {
         view.setBounds(rect);
         this.viewBounds.set(tab.id, rectKey);
       }
-      // `setVisible` is surprisingly expensive while a page is loading; only
-      // touch it when the state actually changes. This also removes the white
-      // flash when clicking around a website.
       if (this.shownViews.has(tab.id) !== visible) {
         view.setVisible(visible);
         if (visible) this.shownViews.add(tab.id);
@@ -251,9 +239,6 @@ export class StageApp {
       }
     }
 
-    // Move keyboard focus with the active surface: a website takes typing, an
-    // internal page leaves it with the shell. Keyed by id + kind so an address
-    // change from web to `stage://` also moves focus.
     const domSurface = !active || active.kind === 'whiteboard' || (active.kind === 'web' && isInternalPage(active.url));
     const focusKey = active ? `${active.id}:${domSurface ? 'dom' : 'web'}` : 'none';
     if (!this.obscured && this.focusKey !== focusKey) {
@@ -323,6 +308,7 @@ export class StageApp {
   private registerIpc(): void {
     this.ipc(CH.APP_STATE, () => this.bootstrap());
     this.ipc(CH.APP_SET_SETTINGS, (patch: unknown) => this.setSettings((patch ?? {}) as Partial<Settings>));
+    this.ipc(CH.APP_PICK_BACKGROUND, () => this.pickCustomBackground());
     this.ipc(CH.APP_QUIT, () => {
       this.saveSession();
       app.quit();
@@ -477,7 +463,7 @@ export class StageApp {
 
   /**
    * Page-markup IPC comes from the page preload, not the shell. A page can only
-   * close the layer that belongs to its own tab.
+   * close or save the layer that belongs to its own tab.
    */
   private registerPageIpc(): void {
     ipcMain.on('stage:ink-close', (event) => {
@@ -486,6 +472,37 @@ export class StageApp {
       this.inkTabs.delete(tabId);
       this.syncInk();
     });
+    ipcMain.on('stage:ink-save', (event) => {
+      const tabId = this.tabs?.tabIdForWebContents(event.sender);
+      if (!tabId) return;
+      void this.study.screenshot(true);
+    });
+  }
+
+  private async pickCustomBackground(): Promise<Settings | null> {
+    const win = this.win;
+    const opts: Electron.OpenDialogOptions = {
+      title: 'Choose New Tab background',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+    };
+    const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    if (res.canceled || !res.filePaths[0]) return null;
+    const filePath = res.filePaths[0];
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.size > 10 * 1024 * 1024) {
+        this.toast('Background image is too large (max 10 MB)', 'error');
+        return null;
+      }
+      const ext = path.extname(filePath).toLowerCase().replace('.', '');
+      const mime = ext === 'jpg' ? 'jpeg' : ext || 'png';
+      const dataUrl = `data:image/${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
+      return await this.setSettings({ newTabBackground: 'custom', customBackgroundImage: dataUrl });
+    } catch {
+      this.toast('Could not read background image', 'error');
+      return null;
+    }
   }
 
   private setInk(tabId: string | null, on: boolean): boolean {
@@ -602,11 +619,22 @@ export class StageApp {
 
 function sanitizeSettings(raw: Partial<Settings>): Settings {
   const base: Settings = { ...DEFAULT_SETTINGS, ...(raw ?? {}) };
+  const customImage =
+    typeof base.customBackgroundImage === 'string' && base.customBackgroundImage.startsWith('data:image/')
+      ? base.customBackgroundImage
+      : undefined;
+  const validBg =
+    NEW_TAB_BACKGROUNDS.some((b) => b.id === base.newTabBackground) || (base.newTabBackground === 'custom' && !!customImage)
+      ? base.newTabBackground
+      : 'ink';
   return {
     ...base,
     schemaVersion: SCHEMA_VERSION,
     appearance: base.appearance === 'light' ? 'light' : 'dark',
-    newTabBackground: NEW_TAB_BACKGROUNDS.some((b) => b.id === base.newTabBackground) ? base.newTabBackground : 'ink',
+    newTabBackground: validBg,
+    customBackgroundImage: customImage,
+    customBackgroundDim: clampNumber(base.customBackgroundDim ?? 0.35, 0, 0.85),
+    customBackgroundBlur: clampNumber(base.customBackgroundBlur ?? 0, 0, 24),
     verticalTabs: !!base.verticalTabs,
     restoreSession: base.restoreSession === true,
     zoom: clampNumber(base.zoom, 0.25, 5),

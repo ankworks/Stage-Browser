@@ -7,6 +7,7 @@ import { actions } from './state/actions';
 import { store } from './state/store';
 import './styles/global.css';
 import './styles/study.css';
+import './styles/backgrounds.css';
 
 /**
  * Renderer entry.
