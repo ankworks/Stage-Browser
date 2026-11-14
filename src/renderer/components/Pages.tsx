@@ -60,6 +60,7 @@ const NewTabPage: React.FC = () => {
 
   return (
     <div className="st-page st-newtab">
+      <div className="st-newtab__wallpaper" aria-hidden="true" />
       <div className="st-newtab__glow" aria-hidden="true" />
       <section className="st-hero">
         <div className="st-hero__mark">

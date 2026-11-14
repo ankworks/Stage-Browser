@@ -127,6 +127,10 @@ const TabsSection: React.FC = () => {
 const AppearanceSection: React.FC = () => {
   const appearance = useSel((s) => s.settings.appearance);
   const background = useSel((s) => s.settings.newTabBackground);
+  const customImage = useSel((s) => s.settings.customBackgroundImage);
+  const customDim = useSel((s) => s.settings.customBackgroundDim ?? 0.35);
+  const customBlur = useSel((s) => s.settings.customBackgroundBlur ?? 0);
+
   return (
     <Section title="Appearance" hint="The whole browser, including the reader and overlays.">
       <div className="st-theme-cards">
@@ -168,6 +172,66 @@ const AppearanceSection: React.FC = () => {
             <span className="st-bgcard__name">{preset.label}</span>
           </button>
         ))}
+      </div>
+
+      <div className="st-custombg">
+        <div className="st-custombg__row">
+          <button className="st-btn st-btn--ghost" onClick={() => void actions.pickCustomBackground()}>
+            <Icon.plus size={15} /> {customImage ? 'Change custom image' : 'Choose custom image…'}
+          </button>
+          {customImage && (
+            <>
+              <button
+                className={`st-btn st-btn--ghost${background === 'custom' ? ' is-active-pill' : ''}`}
+                onClick={() => actions.setNewTabBackground('custom')}
+              >
+                Use custom
+              </button>
+              <button className="st-btn st-btn--ghost" onClick={() => actions.clearCustomBackground()}>
+                <Icon.trash size={14} /> Remove
+              </button>
+            </>
+          )}
+        </div>
+
+        {customImage && (
+          <div className="st-custombg__controls">
+            <button
+              className={`st-custombg__preview${background === 'custom' ? ' is-active' : ''}`}
+              onClick={() => actions.setNewTabBackground('custom')}
+              title="Click to apply custom wallpaper"
+              style={{ backgroundImage: `url("${customImage}")` }}
+            />
+            <div className="st-slider">
+              <div className="st-slider__label">
+                <span>Backdrop dim</span>
+                <span className="st-slider__value">{Math.round(customDim * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={85}
+                step={5}
+                value={Math.round(customDim * 100)}
+                onChange={(event) => actions.setCustomBackgroundDim(Number(event.target.value) / 100)}
+              />
+            </div>
+            <div className="st-slider">
+              <div className="st-slider__label">
+                <span>Backdrop blur</span>
+                <span className="st-slider__value">{customBlur}px</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={20}
+                step={1}
+                value={customBlur}
+                onChange={(event) => actions.setCustomBackgroundBlur(Number(event.target.value))}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Section>
   );

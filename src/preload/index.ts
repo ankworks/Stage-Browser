@@ -37,6 +37,7 @@ function on<T>(channel: string, cb: (payload: T) => void): Unsubscribe {
 export interface StageApi {
   getState: () => Promise<StageBootstrap>;
   setSettings: (patch: Partial<Settings>) => Promise<Settings>;
+  pickBackground: () => Promise<Settings | null>;
   quit: () => void;
   clipboardWrite: (text: string) => Promise<boolean>;
   openExternal: (url: string) => Promise<boolean>;
@@ -142,6 +143,7 @@ export interface StageApi {
 const api: StageApi = {
   getState: () => invoke<StageBootstrap>(CH.APP_STATE),
   setSettings: (patch) => invoke<Settings>(CH.APP_SET_SETTINGS, patch),
+  pickBackground: () => invoke<Settings | null>(CH.APP_PICK_BACKGROUND),
   quit: () => void invoke<void>(CH.APP_QUIT),
   clipboardWrite: (text) => invoke<boolean>(CH.CLIPBOARD_WRITE, text),
   openExternal: (url) => invoke<boolean>(CH.SHELL_OPEN_EXTERNAL, url),

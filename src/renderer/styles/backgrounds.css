@@ -1,0 +1,163 @@
+/* ==================================================================
+   New-tab extra presets (Ocean, Sakura, Midnight, Nord) & custom image
+   ================================================================== */
+
+[data-newtab="ocean"] {
+  --newtab-bg:
+    radial-gradient(95% 85% at 18% 0%, rgba(45, 165, 225, 0.22), transparent 58%),
+    radial-gradient(90% 90% at 88% 14%, rgba(28, 110, 175, 0.2), transparent 62%),
+    linear-gradient(180deg, #07131d 0%, #060a10 65%);
+  --newtab-glow: rgba(45, 165, 225, 0.22);
+}
+
+[data-newtab="sakura"] {
+  --newtab-bg:
+    radial-gradient(90% 80% at 22% 0%, rgba(244, 138, 178, 0.2), transparent 58%),
+    radial-gradient(85% 90% at 86% 14%, rgba(162, 108, 214, 0.18), transparent 62%),
+    linear-gradient(180deg, #140c13 0%, #0b080d 65%);
+  --newtab-glow: rgba(244, 138, 178, 0.2);
+}
+
+[data-newtab="midnight"] {
+  --newtab-bg:
+    radial-gradient(100% 90% at 50% -18%, rgba(105, 120, 255, 0.14), transparent 55%),
+    linear-gradient(180deg, #05060a 0%, #030407 65%);
+  --newtab-glow: rgba(105, 120, 255, 0.16);
+}
+
+[data-newtab="nord"] {
+  --newtab-bg:
+    radial-gradient(95% 85% at 30% 0%, rgba(136, 192, 208, 0.2), transparent 58%),
+    radial-gradient(85% 90% at 85% 15%, rgba(129, 161, 193, 0.18), transparent 62%),
+    linear-gradient(180deg, #0d131a 0%, #090d12 65%);
+  --newtab-glow: rgba(136, 192, 208, 0.2);
+}
+
+[data-theme="light"][data-newtab="ocean"] {
+  --newtab-bg:
+    radial-gradient(95% 85% at 18% 0%, rgba(45, 155, 215, 0.16), transparent 60%),
+    linear-gradient(180deg, #eef6fa 0%, #e5eff5 100%);
+  --newtab-glow: rgba(45, 155, 215, 0.14);
+}
+
+[data-theme="light"][data-newtab="sakura"] {
+  --newtab-bg:
+    radial-gradient(95% 85% at 22% 0%, rgba(232, 118, 162, 0.16), transparent 60%),
+    linear-gradient(180deg, #fbf0f4 0%, #f4e6ec 100%);
+  --newtab-glow: rgba(232, 118, 162, 0.14);
+}
+
+[data-theme="light"][data-newtab="midnight"] {
+  --newtab-bg:
+    radial-gradient(100% 90% at 50% -18%, rgba(75, 92, 210, 0.12), transparent 60%),
+    linear-gradient(180deg, #eff0f6 0%, #e6e8f0 100%);
+  --newtab-glow: rgba(75, 92, 210, 0.12);
+}
+
+[data-theme="light"][data-newtab="nord"] {
+  --newtab-bg:
+    radial-gradient(95% 85% at 30% 0%, rgba(94, 155, 178, 0.16), transparent 60%),
+    linear-gradient(180deg, #eff4f7 0%, #e7eef2 100%);
+  --newtab-glow: rgba(94, 155, 178, 0.14);
+}
+
+/* Settings swatches */
+.st-bgcard[data-bg="ocean"] .st-bgcard__swatch {
+  background: radial-gradient(90% 120% at 18% 0%, #2da5e1 0%, transparent 58%), radial-gradient(90% 120% at 90% 18%, #1c6eaf 0%, transparent 60%), #07131d;
+}
+
+.st-bgcard[data-bg="sakura"] .st-bgcard__swatch {
+  background: radial-gradient(90% 120% at 20% 0%, #f48ab2 0%, transparent 58%), radial-gradient(90% 120% at 90% 18%, #a26cd6 0%, transparent 60%), #140c13;
+}
+
+.st-bgcard[data-bg="midnight"] .st-bgcard__swatch {
+  background: radial-gradient(110% 120% at 50% 0%, #4452b8 0%, #0c0f1e 50%, #040508 100%);
+}
+
+.st-bgcard[data-bg="nord"] .st-bgcard__swatch {
+  background: radial-gradient(90% 120% at 24% 0%, #88c0d0 0%, transparent 58%), radial-gradient(90% 120% at 88% 18%, #81a1c1 0%, transparent 60%), #0d131a;
+}
+
+/* Custom wallpaper layer on New Tab */
+.st-newtab__wallpaper {
+  display: none;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+[data-newtab="custom"] .st-newtab__wallpaper {
+  display: block;
+}
+
+.st-newtab__wallpaper::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  background-image: var(--newtab-custom-img);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--newtab-custom-blur, 0px));
+}
+
+.st-newtab__wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 16, var(--newtab-custom-dim, 0.35));
+}
+
+[data-theme="light"] .st-newtab__wallpaper::after {
+  background: rgba(244, 239, 229, var(--newtab-custom-dim, 0.35));
+}
+
+[data-newtab="custom"] .st-newtab__glow {
+  display: none;
+}
+
+/* Settings custom background controls */
+.st-custombg {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.st-custombg__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.st-btn.is-active-pill {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.st-custombg__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.st-custombg__preview {
+  width: 100%;
+  height: 86px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background-size: cover;
+  background-position: center;
+  transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease);
+}
+
+.st-custombg__preview.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

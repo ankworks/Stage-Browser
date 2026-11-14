@@ -13,27 +13,15 @@ import { sel, useSel } from './state/store';
 
 /**
  * Stage Browser shell.
- *
- *   titlebar (46)
- *   ┌──────────────┬──────────────────────────────┐
- *   │ tab rail 236 │ address (50)                 │   only with 2+ tabs
- *   │              ├──────────────────────────────┤
- *   │              │ native page view             │
- *   └──────────────┴──────────────────────────────┘
- *
- * One tab is the default, and a single tab has no rail: the page gets the full
- * window. The rail appears as soon as a second tab exists. Main owns the native
- * view bounds, so its `contentRect()` uses the exact same rule.
- *
- * Overlays are DOM, so while one is open main hides the native view and sends a
- * snapshot of the page back: the scrim still sits on something that looks like
- * the page instead of a blank rectangle.
  */
 
 const App: React.FC = () => {
   const ready = useSel((s) => s.ready);
   const appearance = useSel((s) => s.settings.appearance);
   const background = useSel((s) => s.settings.newTabBackground);
+  const customImage = useSel((s) => s.settings.customBackgroundImage);
+  const customDim = useSel((s) => s.settings.customBackgroundDim ?? 0.35);
+  const customBlur = useSel((s) => s.settings.customBackgroundBlur ?? 0);
   const tabCount = useSel((s) => s.tabs.length);
   const active = useSel(sel.activeTab);
   const rect = useSel((s) => s.contentRect);
@@ -51,7 +39,17 @@ const App: React.FC = () => {
 
   React.useEffect(() => {
     document.documentElement.dataset.newtab = background || 'ink';
-  }, [background]);
+    const rootStyle = document.documentElement.style;
+    if (customImage) {
+      rootStyle.setProperty('--newtab-custom-img', `url("${customImage}")`);
+      rootStyle.setProperty('--newtab-custom-dim', String(customDim));
+      rootStyle.setProperty('--newtab-custom-blur', `${customBlur}px`);
+    } else {
+      rootStyle.removeProperty('--newtab-custom-img');
+      rootStyle.removeProperty('--newtab-custom-dim');
+      rootStyle.removeProperty('--newtab-custom-blur');
+    }
+  }, [background, customImage, customDim, customBlur]);
 
   React.useEffect(() => {
     void window.stage.window.obscure(overlayOpen);

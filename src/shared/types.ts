@@ -648,15 +648,30 @@ export interface StudyState {
   find: FindState;
 }
 
-export type NewTabBackgroundId = 'ink' | 'aurora' | 'ember' | 'forest' | 'slate' | 'sand';
+export type NewTabBackgroundId =
+  | 'ink'
+  | 'aurora'
+  | 'ember'
+  | 'forest'
+  | 'slate'
+  | 'sand'
+  | 'ocean'
+  | 'sakura'
+  | 'midnight'
+  | 'nord'
+  | 'custom';
 
-export const NEW_TAB_BACKGROUNDS: { id: NewTabBackgroundId; label: string; note: string }[] = [
+export const NEW_TAB_BACKGROUNDS: { id: Exclude<NewTabBackgroundId, 'custom'>; label: string; note: string }[] = [
   { id: 'ink', label: 'Ink', note: 'Deep blue, quiet' },
   { id: 'aurora', label: 'Aurora', note: 'Teal and violet' },
   { id: 'ember', label: 'Ember', note: 'Warm night light' },
   { id: 'forest', label: 'Forest', note: 'Moss and pine' },
   { id: 'slate', label: 'Slate', note: 'Neutral graphite' },
   { id: 'sand', label: 'Sand', note: 'Warm paper' },
+  { id: 'ocean', label: 'Ocean', note: 'Deep sea & mist' },
+  { id: 'sakura', label: 'Sakura', note: 'Soft dusk blossom' },
+  { id: 'midnight', label: 'Midnight', note: 'Pure dark focus' },
+  { id: 'nord', label: 'Nord', note: 'Cool arctic frost' },
 ];
 
 export interface Settings {
@@ -705,6 +720,12 @@ export interface Settings {
   appearance: 'dark' | 'light';
   /** New-tab backdrop. Kept separate from the UI theme so paper stays readable. */
   newTabBackground: NewTabBackgroundId;
+  /** Local image data-URL for the custom new-tab wallpaper. */
+  customBackgroundImage?: string;
+  /** 0..0.85 darkening/lightening veil over custom wallpaper for legibility. */
+  customBackgroundDim?: number;
+  /** 0..24 px blur radius for custom wallpaper. */
+  customBackgroundBlur?: number;
   verticalTabs: boolean;
   /** Start with the previous tabs instead of one fresh tab. Off by default. */
   restoreSession: boolean;
@@ -758,6 +779,9 @@ export const DEFAULT_SETTINGS: Settings = {
 
   appearance: 'dark',
   newTabBackground: 'ink',
+  customBackgroundImage: undefined,
+  customBackgroundDim: 0.35,
+  customBackgroundBlur: 0,
   verticalTabs: false,
   restoreSession: false,
   siteZoom: {},
@@ -812,4 +836,3 @@ export interface DiagStats {
   heapMb?: number;
   backgroundViews: number;
 }
-

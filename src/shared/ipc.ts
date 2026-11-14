@@ -9,6 +9,7 @@ export const CH = {
   /* app / window */
   APP_STATE: 'app:state',
   APP_SET_SETTINGS: 'app:setSettings',
+  APP_PICK_BACKGROUND: 'app:pickBackground',
   APP_QUIT: 'app:quit',
   WIN_MINIMIZE: 'win:minimize',
   WIN_TOGGLE_MAXIMIZE: 'win:toggleMaximize',
