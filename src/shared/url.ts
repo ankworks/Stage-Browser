@@ -1,16 +1,15 @@
 /**
- * URL handling shared by main and both renderers.
+ * URL handling shared by main and the renderer.
  *
  * Two hard rules:
  *  1. `resolveInput` never guesses a search from something that looks like a
  *     host unless it really is one, and never produces `file:`/`javascript:`
  *     URLs for navigation.
- *  2. Nothing here is ever rendered on the LIVE output — LIVE receives no URLs
- *     at all (`LiveState` has no url field, by design).
+ *  2. Internal pages are the only non-web targets a tab may load.
  */
 
-export const INTERNAL_PREFIX = 'juzt://';
-export const INTERNAL_PAGES = ['newtab', 'favorites', 'history', 'boards', 'about'] as const;
+export const INTERNAL_PREFIX = 'stage://';
+export const INTERNAL_PAGES = ['newtab', 'favorites', 'history', 'settings', 'about', 'reader'] as const;
 export type InternalPage = (typeof INTERNAL_PAGES)[number];
 
 export const SEARCH_ENGINE = 'https://duckduckgo.com/?q=%s';
@@ -20,11 +19,9 @@ const SCHEME_RE = /^([a-z][a-z0-9+.-]*):/i;
  * Schemes a tab is allowed to load.
  *
  * `file:`, `data:` and `blob:` are deliberately absent: a typed address must
- * never be able to load local files or hand-rolled documents into a tab. Local
- * media reaches the renderer through the `juzt-media:` protocol instead, which
- * is a read-only allow-listed handler in main.
+ * never be able to load local files or hand-rolled documents into a tab.
  */
-const NAVIGABLE = new Set(['http:', 'https:', 'juzt:', 'about:']);
+const NAVIGABLE = new Set(['http:', 'https:', 'stage:', 'about:']);
 const BLOCKED_SCHEMES = new Set([
   'javascript:',
   'file:',
@@ -153,7 +150,7 @@ export function safeFilename(name: string, ext: string): string {
     .replace(/[^a-z0-9-_ ]/gi, '')
     .trim()
     .replace(/\s+/g, '-')
-    .slice(0, 60) || 'juzt';
+    .slice(0, 60) || 'stage';
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   return `${base}-${stamp}.${ext}`;
 }

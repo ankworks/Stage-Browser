@@ -286,4 +286,127 @@ export const Icon: Record<string, React.FC<{ size?: number }>> = {
       <path d="M7.5 20.5l2-4M16.5 20.5l-2-4" />
     </svg>
   ),
+  download: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M12 3.5v10M8 9.5l4 4 4-4" />
+      <path d="M4.5 16.5v2a2 2 0 002 2h11a2 2 0 002-2v-2" />
+    </svg>
+  ),
+  book: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M3.5 5.2c2.8-.9 5.6-.6 8.5 1v13c-2.9-1.6-5.7-1.9-8.5-1V5.2z" />
+      <path d="M20.5 5.2c-2.8-.9-5.6-.6-8.5 1v13c2.9-1.6 5.7-1.9 8.5-1V5.2z" />
+    </svg>
+  ),
+  puzzle: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M9.5 4.5a2 2 0 014 0v1.2h3.3a1.7 1.7 0 011.7 1.7v3.3h1.2a2 2 0 010 4h-1.2v3.6a1.7 1.7 0 01-1.7 1.7h-3.6v-1.2a2 2 0 00-4 0v1.2H5.6a1.7 1.7 0 01-1.7-1.7v-3.6h1.2a2 2 0 000-4H3.9V7.4a1.7 1.7 0 011.7-1.7h3.9V4.5z" />
+    </svg>
+  ),
+  reader: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M5 3.5h9.5L19 8v12.5H5z" />
+      <path d="M14 3.5V8h5M8 12h8M8 15.5h8M8 19h5" />
+    </svg>
+  ),
+  print: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M7 8.5V3.5h10v5" />
+      <rect x="4" y="8.5" width="16" height="8" rx="2" />
+      <path d="M7 14h10v6.5H7z" />
+      <path d="M17 11.5h.01" />
+    </svg>
+  ),
+  sun: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6" />
+    </svg>
+  ),
+  moon: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
+    </svg>
+  ),
+  shot: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M4 8.5h3l1.5-2.5h7L17 8.5h3v10H4z" />
+      <circle cx="12" cy="13.2" r="3.2" />
+    </svg>
+  ),
+  arrowLeft: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M19 12H5M11 6l-6 6 6 6" />
+    </svg>
+  ),
+  arrowRight: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  ),
+  external: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M14 4.5h5.5V10M19.5 4.5L11 13" />
+      <path d="M18 14v4.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 014 18.5v-11A1.5 1.5 0 015.5 6H10" />
+    </svg>
+  ),
+  tabs: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <rect x="3.5" y="7.5" width="17" height="12" rx="2" />
+      <path d="M6.5 7.5V5.5A1.5 1.5 0 018 4h8a1.5 1.5 0 011.5 1.5v2M8 12h8M8 15.5h5" />
+    </svg>
+  ),
+  close: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M5 5l14 14M19 5L5 19" />
+    </svg>
+  ),
+  lock: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <rect x="4.5" y="10" width="15" height="10" rx="2.5" />
+      <path d="M8 10V7.5a4 4 0 018 0V10" />
+    </svg>
+  ),
+  home: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M4 10.5L12 4l8 6.5" />
+      <path d="M6 9.5V20h12V9.5M10 20v-5.5h4V20" />
+    </svg>
+  ),
+  history: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M4 5v5h5" />
+      <path d="M4.6 10a8 8 0 111.2 6.5" />
+      <path d="M12 8v4.5l3 1.8" />
+    </svg>
+  ),
+  more: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  command: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M9 9h6v6H9z" />
+      <path d="M9 9V7.5A2.5 2.5 0 116.5 10H9M15 9V7.5A2.5 2.5 0 1117.5 10H15M9 15v1.5A2.5 2.5 0 116.5 14H9M15 15v1.5a2.5 2.5 0 102.5-2.5H15" />
+    </svg>
+  ),
+  minimize: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <path d="M6 12h12" />
+    </svg>
+  ),
+  maximize: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    </svg>
+  ),
+  restore: ({ size = 20 }) => (
+    <svg {...base} width={size} height={size}>
+      <rect x="5" y="8" width="11" height="11" rx="1.5" />
+      <path d="M8.5 8V5.5h10V15" />
+    </svg>
+  ),
 };

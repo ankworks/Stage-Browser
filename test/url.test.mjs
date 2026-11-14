@@ -1,7 +1,7 @@
 /**
- * Address resolution — the security-relevant half of the palette.
+ * Address resolution — the security-relevant half of the address bar.
  *
- * `node --test` runs these against the compiled `dist/shared` output so the
+ * `node --test` runs these against the compiled `dist/test/shared` output so the
  * tests exercise exactly the code the app ships.
  */
 
@@ -21,9 +21,9 @@ test('a bare domain becomes http, not a search', () => {
 });
 
 test('free text falls through to the search engine', () => {
-  const out = resolveInput('how to teach fractions');
+  const out = resolveInput('how to study fractions');
   assert.ok(out.startsWith('https://duckduckgo.com/?q='), out);
-  assert.ok(out.includes('how%20to%20teach%20fractions'));
+  assert.ok(out.includes('how%20to%20study%20fractions'));
 });
 
 test('search can be disabled for a strict address field', () => {
@@ -37,17 +37,18 @@ test('dangerous schemes are refused outright', () => {
 });
 
 test('internal pages normalise and are recognised', () => {
-  assert.equal(resolveInput('juzt://newtab'), 'juzt://newtab');
-  assert.equal(resolveInput('juzt://'), 'juzt://newtab');
-  assert.equal(resolveInput('juzt://nonsense'), 'juzt://newtab');
-  assert.equal(isInternalPage('juzt://favorites'), true);
-  assert.equal(internalPage('juzt://boards'), 'boards');
-  assert.equal(internalPage('https://boards'), null);
+  assert.equal(resolveInput('stage://newtab'), 'stage://newtab');
+  assert.equal(resolveInput('stage://'), 'stage://newtab');
+  assert.equal(resolveInput('stage://nonsense'), 'stage://newtab');
+  assert.equal(isInternalPage('stage://favorites'), true);
+  assert.equal(internalPage('stage://reader?id=x'), 'reader');
+  assert.equal(internalPage('https://stage'), null);
 });
 
-test('retired Stage pages are not navigable', () => {
-  assert.equal(resolveInput('stage://newtab'), null);
-  assert.equal(resolveInput('stage://settings'), null);
+test('only Stage internal pages are navigable', () => {
+  assert.equal(resolveInput('juzt://newtab'), null);
+  assert.equal(resolveInput('juzt://settings'), null);
+  assert.equal(resolveInput('stage://boards'), 'stage://newtab');
 });
 
 test('empty input resolves to nothing', () => {
@@ -60,7 +61,7 @@ test('host labels are human-friendly', () => {
   // The query is kept: two links to the same path with different queries are
   // different pages, and the label is the only way to tell them apart.
   assert.equal(prettyUrl('https://www.example.com/a/b?c=1'), 'example.com/a/b?c=1');
-  assert.equal(prettyUrl('juzt://newtab'), '');
+  assert.equal(prettyUrl('stage://newtab'), '');
 });
 
 test('file names are sanitised for the save dialog', () => {
@@ -69,6 +70,6 @@ test('file names are sanitised for the save dialog', () => {
   assert.ok(name.endsWith('.png'));
   assert.ok(!/[\\/:*?"<>|]/.test(name), name);
 
-  assert.ok(safeFilename('', 'png').startsWith('juzt-'));
+  assert.ok(safeFilename('', 'png').startsWith('stage-'));
   assert.ok(!safeFilename('..\\../etc', 'png').includes('/'));
 });

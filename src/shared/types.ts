@@ -1,19 +1,15 @@
 /**
- * Juzt — shared contracts between the main process, the preload bridge and the
- * two renderers (PREP = private teacher workspace, LIVE = audience output).
+ * Stage Browser — shared contracts between the main process, the preload
+ * bridge and the browser renderer.
  *
- * Nothing in here may contain private data: `LiveState` is the *public*
- * projection that LIVE receives, and it must never carry tab URLs, history,
- * favorites or prep notes.
+ * Nothing here is exposed to a website; website tabs get no bridge at all.
  */
 
 /* ------------------------------------------------------------------ *
  * Basics
  * ------------------------------------------------------------------ */
 
-export const APP_NAME = 'Juzt';
-export const PREP_WINDOW_TITLE = 'Juzt Prep';
-export const LIVE_WINDOW_TITLE = 'Juzt Live';
+export const APP_NAME = 'Stage Browser';
 export const SCHEMA_VERSION = 1;
 
 export interface Rect {
@@ -494,24 +490,6 @@ export interface PrepUiState {
   cameraDrag?: boolean;
 }
 
-export interface PrepBootstrap {
-  appName: string;
-  version: string;
-  dev: boolean;
-  settings: Settings;
-  scenes: Scene[];
-  activeSceneId?: string;
-  tabs: TabState[];
-  activeTabId: string | null;
-  boards: WhiteboardMeta[];
-  favorites: Favorite[];
-  history: HistoryEntry[];
-  displays: DisplayInfo[];
-  live: LivePayload;
-  ui: PrepUiState;
-  diagnosticsEnabled: boolean;
-}
-
 /* ------------------------------------------------------------------ *
  * Scenes
  * ------------------------------------------------------------------ */
@@ -571,6 +549,105 @@ export const DEFAULT_CAMERA_CONFIG: CameraConfig = {
   radius: 16,
 };
 
+/* ------------------------------------------------------------------ *
+ * Study surfaces (PREP-only, never part of LiveState)
+ * ------------------------------------------------------------------ */
+
+export interface ReadingEntry {
+  id: string;
+  url: string;
+  title: string;
+  favicon?: string;
+  addedAt: number;
+  doneAt?: number;
+  /** Rough reading budget derived from the article's word count. */
+  minutes: number;
+  words: number;
+  note?: string;
+}
+
+export type DownloadState = 'progressing' | 'paused' | 'completed' | 'cancelled' | 'interrupted';
+
+export interface DownloadEntry {
+  id: string;
+  filename: string;
+  url: string;
+  savePath: string;
+  state: DownloadState;
+  received: number;
+  total: number;
+  paused: boolean;
+  startedAt: number;
+  endedAt?: number;
+  mime?: string;
+}
+
+export interface ExtensionInfo {
+  id: string;
+  name: string;
+  version: string;
+  manifestVersion: number;
+  path: string;
+  description?: string;
+  enabled: boolean;
+  error?: string;
+}
+
+export interface ReaderBlock {
+  kind: 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'quote' | 'code';
+  text: string;
+}
+
+export interface ReaderArticle {
+  id: string;
+  url: string;
+  title: string;
+  byline?: string;
+  siteName?: string;
+  /** Structured text only — the reader never renders raw page HTML. */
+  blocks: ReaderBlock[];
+  words: number;
+  minutes: number;
+}
+
+export interface FindState {
+  open: boolean;
+  query: string;
+  matches: number;
+  activeMatch: number;
+  caseSensitive: boolean;
+  /** Set when the page is gone or cannot be searched. */
+  error?: string;
+}
+
+export interface AcceleratorInput {
+  key: string;
+  control: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
+export interface PageContextPayload {
+  tabId: string;
+  x: number;
+  y: number;
+  linkURL?: string;
+  linkText?: string;
+  srcURL?: string;
+  selectionText?: string;
+  isEditable: boolean;
+  mediaType?: string;
+  pageURL: string;
+}
+
+export interface StudyState {
+  downloads: DownloadEntry[];
+  readingList: ReadingEntry[];
+  extensions: ExtensionInfo[];
+  find: FindState;
+}
+
 export interface Settings {
   schemaVersion: number;
   presentationMode: PresentationMode;
@@ -612,6 +689,15 @@ export interface Settings {
   /** Development diagnostics are opt-in. */
   diagnostics: boolean;
   firstRunDone: boolean;
+
+  /** Study surfaces: appearance, per-site zoom, tab rail, reader typography. */
+  appearance: 'dark' | 'light';
+  verticalTabs: boolean;
+  /** Start with the previous tabs instead of one fresh tab. Off by default. */
+  restoreSession: boolean;
+  /** host → zoom factor, e.g. `{ "docs.google.com": 1.1 }`. */
+  siteZoom: Record<string, number>;
+  readerFontSize: number;
 
   /** Tabs restored on the previous quit (URLs are private, prep-only). */
   lastSession?: {
@@ -656,6 +742,12 @@ export const DEFAULT_SETTINGS: Settings = {
   prepPaneOpen: false,
   diagnostics: false,
   firstRunDone: false,
+
+  appearance: 'dark',
+  verticalTabs: false,
+  restoreSession: false,
+  siteZoom: {},
+  readerFontSize: 19,
 };
 
 /* ------------------------------------------------------------------ *

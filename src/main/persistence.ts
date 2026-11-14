@@ -5,7 +5,7 @@ import { stateFile } from './paths';
 /**
  * Tiny atomic JSON store.
  *
- * Writes are debounced and coalesced per file (whiteboards can be edited while
+ * Writes are debounced and coalesced per file (settings can change while
  * a class runs — we must never write on every pointer move), and `flushAllSync`
  * runs on quit so nothing is lost on the way out.
  */
@@ -36,7 +36,7 @@ function writeAtomic(file: string, data: unknown): void {
     fs.renameSync(tmp, file);
   } catch (err) {
     // A failed save must never take the app down; surface it in diagnostics only.
-    process.emitWarning(`Juzt: could not save ${file}: ${String(err)}`);
+    process.emitWarning(`Stage Browser: could not save ${file}: ${String(err)}`);
   }
 }
 

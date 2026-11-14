@@ -1,18 +1,22 @@
 import { app, BrowserWindow } from 'electron';
-import { JuztApp } from './app';
+import { StageApp } from './app';
+import { APP_NAME } from '../shared/types';
 
 /**
- * Juzt entry point.
+ * Stage Browser entry point.
  *
  * The single-instance lock is taken before any window exists; a second launch
- * focuses the PREP window instead of starting a competing session.
+ * focuses the existing window instead of opening a competing profile.
  */
+
+if (process.env.STAGE_USER_DATA) app.setPath('userData', process.env.STAGE_USER_DATA);
+app.setName(APP_NAME);
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  const juzt = new JuztApp();
+  const stage = new StageApp();
 
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
@@ -23,7 +27,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    void juzt.start();
+    void stage.start();
   });
 
   app.on('activate', () => {
@@ -32,8 +36,8 @@ if (!gotLock) {
   });
 
   app.on('before-quit', () => {
-    juzt.saveSession();
-    juzt.dispose();
+    stage.saveSession();
+    stage.dispose();
   });
 
   app.on('window-all-closed', () => {
@@ -41,7 +45,6 @@ if (!gotLock) {
   });
 
   process.on('uncaughtException', (err) => {
-    // Never die silently in front of a class.
-    process.emitWarning(`Juzt uncaught exception: ${String(err)}`);
+    process.emitWarning(`Stage Browser uncaught exception: ${String(err)}`);
   });
 }

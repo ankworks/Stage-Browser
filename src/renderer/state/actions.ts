@@ -1,29 +1,36 @@
-import { COMMANDS, matchCommands, type CommandMatch } from '../../shared/commands';
-import type {
-  BackgroundSpec,
-  CameraConfig,
-  PrivacyMask,
-  Scene,
-  Settings,
-  SpotlightState,
-  ToolId,
-  WbObject,
-  WbOp,
-  WbStyle,
-  WbTool,
-  WhiteboardThemeId,
-} from '../../shared/types';
-import { safeFilename } from '../../shared/url';
-import { store, type InkStyle, type SettingsTab } from './store';
+import { isInternalPage, resolveInput } from '../../shared/url';
+import type { PageContextPayload, Settings } from '../../shared/types';
+import { isWebTab } from '../../shared/types';
+import { store } from './store';
 
 /**
- * Every user intent from PREP.
+ * Every user intent from the Stage shell.
  *
- * The main process owns the truth: actions send a request and the new state
- * comes back through an event. Nothing here writes per pointer event.
+ * Main owns the truth: actions send a request and the new state comes back
+ * through an event. Nothing here writes on every keystroke of the page.
  */
 
 let toastSeq = 0;
+
+const api = () => window.stage;
+
+function activeId(): string | null {
+  return store.getState().activeTabId;
+}
+
+function activeTab() {
+  const s = store.getState();
+  return s.tabs.find((t) => t.id === s.activeTabId) ?? null;
+}
+
+function activeUrl(): string | null {
+  const tab = activeTab();
+  return tab && isWebTab(tab) ? tab.url : null;
+}
+
+function dismissLater(id: string): void {
+  window.setTimeout(() => actions.dismissToast(id), 3800);
+}
 
 export const actions = {
   /* ------------------------------------------------------------------ *
@@ -33,6 +40,7 @@ export const actions = {
   toast(message: string, tone: 'info' | 'error' = 'info'): void {
     const id = `t_${Date.now().toString(36)}_${++toastSeq}`;
     store.set((s) => ({ toasts: [...s.toasts, { id, message, tone, at: Date.now() }].slice(-3) }));
+    dismissLater(id);
   },
 
   dismissToast(id: string): void {
@@ -43,650 +51,431 @@ export const actions = {
    * Tabs
    * ------------------------------------------------------------------ */
 
-  async newTab(url?: string): Promise<string> {
-    return window.juzt.tabs.create({ url: url ?? 'juzt://newtab' });
+  async newTab(input?: string): Promise<string> {
+    let url = 'stage://newtab';
+    if (input && input.trim()) {
+      const raw = input.trim();
+      url = isInternalPage(raw) ? raw : resolveInput(raw) ?? 'stage://newtab';
+    }
+    return api().tabs.create({ url });
   },
-  async newWhiteboardTab(): Promise<string> {
-    return window.juzt.tabs.create({ kind: 'whiteboard' });
+
+  openInternal(page: 'newtab' | 'favorites' | 'history' | 'settings' | 'about'): void {
+    void api().tabs.create({ url: `stage://${page}` });
   },
-  async newPrivateTab(): Promise<string> {
-    return window.juzt.tabs.openPrivate('juzt://newtab');
+
+  closeTab(id?: string): void {
+    const tabId = id ?? activeId();
+    if (tabId) api().tabs.close(tabId);
   },
-  async closeTab(id: string): Promise<void> {
-    await window.juzt.tabs.close(id);
+
+  closeOthers(id?: string): void {
+    const tabId = id ?? activeId();
+    if (tabId) api().tabs.closeOthers(tabId);
   },
-  async closeOthers(id: string): Promise<void> {
-    await window.juzt.tabs.closeOthers(id);
+
+  closeRight(id?: string): void {
+    const tabId = id ?? activeId();
+    if (tabId) api().tabs.closeRight(tabId);
   },
-  async closeToRight(id: string): Promise<void> {
-    await window.juzt.tabs.closeRight(id);
+
+  activateTab(id: string): void {
+    api().tabs.activate(id);
   },
+
   async reopenTab(): Promise<void> {
-    const reopened = await window.juzt.tabs.reopen();
-    if (!reopened) actions.toast('Nothing left to reopen');
+    const tab = await api().tabs.reopen();
+    if (!tab) actions.toast('Nothing left to reopen');
   },
-  async activateTab(id: string): Promise<void> {
-    await window.juzt.tabs.activate(id);
+
+  reorderTab(from: number, to: number): void {
+    if (from === to) return;
+    api().tabs.reorder(from, to);
   },
-  async activateIndex(index: number): Promise<void> {
-    const tab = store.getState().tabs[index];
-    if (tab) await actions.activateTab(tab.id);
+
+  duplicateTab(id?: string): void {
+    const tabId = id ?? activeId();
+    if (tabId) api().tabs.duplicate(tabId);
   },
-  async duplicateTab(id: string): Promise<void> {
-    await window.juzt.tabs.duplicate(id);
+
+  pinTab(id: string, pinned: boolean): void {
+    api().tabs.pin(id, pinned);
   },
-  async pinTab(id: string, pinned: boolean): Promise<void> {
-    await window.juzt.tabs.pin(id, pinned);
+
+  muteTab(id: string, muted: boolean): void {
+    api().tabs.mute(id, muted);
   },
-  async muteTab(id: string, muted: boolean): Promise<void> {
-    await window.juzt.tabs.mute(id, muted);
+
+  cycleTab(delta: number): void {
+    const s = store.getState();
+    if (s.tabs.length < 2) return;
+    const index = s.tabs.findIndex((t) => t.id === s.activeTabId);
+    const next = (index + delta + s.tabs.length) % s.tabs.length;
+    actions.activateTab(s.tabs[next].id);
   },
-  async reorderTabs(from: number, to: number): Promise<void> {
-    await window.juzt.tabs.reorder(from, to);
-  },
-  async navigateActive(input: string): Promise<void> {
-    const state = store.getState();
-    const tab = selActiveWeb(state);
-    if (!tab) {
-      await actions.newTab(input);
+
+  /* ------------------------------------------------------------------ *
+   * Navigation
+   * ------------------------------------------------------------------ */
+
+  navigate(input: string, tabId?: string): void {
+    const id = tabId ?? activeId();
+    if (!id) {
+      void actions.newTab(input);
       return;
     }
-    const ok = await window.juzt.tabs.navigate(tab.id, input);
-    if (!ok) actions.toast('That address cannot be opened safely', 'error');
+    void api().tabs.navigate(id, input);
   },
-  /** Palette navigation is audience-aware while a page is presented (dual mode). */
-  /** Palette alias (kept for component compatibility). */
-  async navigate(input: string): Promise<void> {
-    return actions.navigateFromPalette(input);
-  },
-  async openUrl(url: string): Promise<void> {
-    await actions.navigateFromPalette(url);
-  },
-  /** Palette alias — naming kept because the palette reads better with it. */
-  async openFromPalette(input: string): Promise<void> {
-    await actions.navigateFromPalette(input);
-  },
-  async navigateFromPalette(input: string): Promise<void> {
-    const state = store.getState();
-    const dual = state.settings.presentationMode === 'dual';
-    const presenting = state.live?.presentation.kind === 'web';
-    if (dual && presenting) {
-      const ok = await window.juzt.present.navigateAudience(input);
-      if (!ok) actions.toast('That address cannot be opened safely', 'error');
-      return;
-    }
-    await actions.navigateActive(input);
-  },
+
   back(): void {
-    const tab = selActiveWeb(store.getState());
-    if (tab) void window.juzt.tabs.back(tab.id);
+    const id = activeId();
+    if (id) api().tabs.back(id);
+    void api().window.focusPage();
   },
+
   forward(): void {
-    const tab = selActiveWeb(store.getState());
-    if (tab) void window.juzt.tabs.forward(tab.id);
+    const id = activeId();
+    if (id) api().tabs.forward(id);
+    void api().window.focusPage();
   },
-  reload(): void {
-    const tab = selActiveWeb(store.getState());
-    if (tab) void window.juzt.tabs.reload(tab.id);
+
+  reload(hard = false): void {
+    const id = activeId();
+    if (!id) return;
+    if (hard) api().tabs.hardReload(id);
+    else api().tabs.reload(id);
+    void api().window.focusPage();
   },
-  hardReload(): void {
-    const tab = selActiveWeb(store.getState());
-    if (tab) void window.juzt.tabs.hardReload(tab.id);
-  },
+
   stop(): void {
-    const tab = selActiveWeb(store.getState());
-    if (tab) void window.juzt.tabs.stop(tab.id);
+    const id = activeId();
+    if (id) api().tabs.stop(id);
   },
-  async setZoom(factor: number): Promise<void> {
-    const tab = selActiveWeb(store.getState());
-    if (tab) await window.juzt.tabs.zoom(tab.id, factor);
-    await actions.setSettings({ zoom: factor });
+
+  openExternal(url: string): void {
+    void api().openExternal(url);
   },
-  async adjustZoom(delta: number): Promise<void> {
-    const current = store.getState().settings.zoom ?? 1;
-    await actions.setZoom(Math.min(5, Math.max(0.25, Math.round((current + delta) * 100) / 100)));
+
+  copyText(text: string): void {
+    if (!text) return;
+    void api().clipboardWrite(text);
+    actions.toast('Copied');
   },
 
   /* ------------------------------------------------------------------ *
-   * Present
+   * Favorites + history
    * ------------------------------------------------------------------ */
 
-  async presentActive(): Promise<void> {
-    const { tabs, activeTabId } = store.getState();
-    const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab) return;
-    if (tab.kind === 'whiteboard') await actions.presentBoard(tab.boardId);
-    else await actions.presentTab(tab.id);
-  },
-  async presentTab(id: string): Promise<void> {
-    store.set({ live: await window.juzt.present.tab(id) });
-  },
-  async presentBoard(boardId: string): Promise<void> {
-    store.set({ live: await window.juzt.present.board(boardId) });
-  },
-  async stopPresenting(): Promise<void> {
-    store.set({ live: await window.juzt.present.stop() });
-  },
-  async retryPresent(): Promise<void> {
-    await actions.presentActive();
-  },
-  async openLiveWindow(): Promise<void> {
-    await window.juzt.present.openWindow();
-  },
-  async setPreview(enabled: boolean): Promise<void> {
-    store.set({ previewEnabled: enabled });
-    await window.juzt.present.preview(enabled);
-  },
-
-  async setPrivacy(on: boolean): Promise<void> {
-    store.set({ live: await window.juzt.present.setPrivacy(on) });
-  },
-  async togglePrivacy(): Promise<void> {
-    await actions.setPrivacy(!store.getState().live?.flags.privacy);
-  },
-  async setFreeze(on: boolean): Promise<void> {
-    store.set({ live: await window.juzt.present.setFreeze(on) });
-  },
-  async toggleFreeze(): Promise<void> {
-    await actions.setFreeze(!store.getState().live?.flags.frozen);
-  },
-  async setSpotlight(patch: Partial<SpotlightState>): Promise<void> {
-    await window.juzt.effects.spotlight(patch);
-  },
-  async toggleSpotlight(): Promise<void> {
-    await actions.setSpotlight({ on: !store.getState().live?.flags.spotlight });
-  },
-  async setHolding(on: boolean): Promise<void> {
-    store.set({ live: await window.juzt.present.setHolding({ on }), holdingScreen: on });
-  },
-  async setHoldingText(text: string): Promise<void> {
-    store.set({ live: await window.juzt.present.setHolding({ text }) });
-  },
-  async setMasks(masks: PrivacyMask[]): Promise<void> {
-    store.set({ masks, live: await window.juzt.present.setMasks(masks) });
-  },
-  async addMask(mode: 'solid' | 'blur' = 'solid'): Promise<void> {
-    const masks = store.getState().masks;
-    await actions.setMasks([...masks, { id: `mask_${Date.now().toString(36)}`, x: 0.14, y: 0.16, w: 0.28, h: 0.2, mode }].slice(0, 8));
-  },
-  async updateMask(id: string, patch: Partial<PrivacyMask>): Promise<void> {
-    await actions.setMasks(store.getState().masks.map((m) => (m.id === id ? { ...m, ...patch } : m)));
-  },
-  async removeMask(id: string): Promise<void> {
-    await actions.setMasks(store.getState().masks.filter((m) => m.id !== id));
-  },
-  toggleClean(): void {
-    store.set({ cleanMode: !store.getState().cleanMode });
-  },
-
-  /* ------------------------------------------------------------------ *
-   * Ink (website annotation — the overlay renderer owns the model)
-   * ------------------------------------------------------------------ */
-
-  setTool(tool: ToolId): void {
-    store.set({ tool });
-    void window.juzt.ui.state({ tool, inkLayer: store.getState().inkCount > 0 });
-  },
-  setInk(patch: Partial<{ color: string; size: number; opacity: number; fontSize: number }>): void {
-    store.set((s) => ({ ink: { ...s.ink, ...patch } }));
-    actions.pushInkUi();
-  },
-  nudgeInkSize(delta: number): void {
-    store.set((s) => ({ ink: { ...s.ink, size: Math.min(80, Math.max(1, s.ink.size + delta)) } }));
-    actions.pushInkUi();
-  },
-  /**
-   * Tell main what the card overlay should do.
-   *
-   * Electron 31 has no per-view click-through (`setIgnoreMouseEvents` exists on
-   * windows only), so the overlay is *shown* exactly when it must capture the
-   * pointer: a drawing tool is active, committed ink has to be visible, the
-   * teacher is repositioning the camera, or an audience effect is on the card.
-   * The moment none of that is true the view is hidden and the website gets its
-   * normal mouse behaviour back, untouched.
-   */
-  pushInkUi(): void {
-    const s = store.getState();
-    void window.juzt.ui.state({
-      tool: s.tool,
-      inkLayer: s.inkCount > 0 || s.masks.length > 0 || !!s.live?.flags.spotlight,
-      cover: s.holdingScreen && s.settings.presentationMode === 'single',
-      style: { color: s.ink.color, size: s.ink.size, opacity: s.ink.opacity, fontSize: s.ink.fontSize },
-      number: s.inkCount + 1,
-      cameraDrag: s.cameraDrag,
-    });
-  },
-  /**
-   * "Reposition the camera" mode: while it is on, the overlay keeps the mouse so
-   * the preview can be dragged over a live page. Turning it off hands the mouse
-   * straight back to the website.
-   */
-  setCameraDrag(on: boolean): void {
-    store.set({ cameraDrag: on });
-    actions.pushInkUi();
-    if (on) store.set({ tool: 'cursor' });
-  },
-  inkCommand(cmd: 'undo' | 'redo' | 'clear'): void {
-    void window.juzt.ink.command(cmd);
-  },
-
-  /* ------------------------------------------------------------------ *
-   * Whiteboard
-   * ------------------------------------------------------------------ */
-
-  /** Single-op convenience wrapper used by the editor. */
-  async wbOp(boardId: string, ops: WbOp[]): Promise<void> {
-    return actions.wbOps(boardId, ops);
-  },
-  setWbView(boardId: string, view: { x: number; y: number; zoom: number }): void {
-    store.set((s) => ({ wbView: { ...s.wbView, [boardId]: view } }));
-  },
-  async wbOps(boardId: string, ops: WbOp[]): Promise<void> {
-    const result = await window.juzt.boards.ops(boardId, ops);
-    store.set({ wbCanUndo: result.canUndo, wbCanRedo: result.canRedo });
-  },
-  async wbUndo(boardId?: string | null): Promise<void> {
-    const id = boardId ?? selActiveBoardId(store.getState());
-    if (!id) return;
-    const result = await window.juzt.boards.undo(id);
-    store.set({ wbCanUndo: result.canUndo, wbCanRedo: result.canRedo });
-  },
-  async wbRedo(boardId?: string | null): Promise<void> {
-    const id = boardId ?? selActiveBoardId(store.getState());
-    if (!id) return;
-    const result = await window.juzt.boards.redo(id);
-    store.set({ wbCanUndo: result.canUndo, wbCanRedo: result.canRedo });
-  },
-  async wbClear(boardId: string): Promise<void> {
-    await actions.wbOps(boardId, [{ type: 'clear' }]);
-  },
-  setWbTool(tool: WbTool): void {
-    store.set({ wbTool: tool });
-  },
-  setWbStyle(patch: Partial<InkStyle & { width?: number; fill?: string }>): void {
-    store.set((s) => ({ wbStyle: { ...s.wbStyle, ...patch } }));
-  },
-  setWbSelection(ids: string[]): void {
-    store.set({ wbSelection: ids });
-  },
-  async wbSetTheme(boardId: string, theme: WhiteboardThemeId): Promise<void> {
-    await actions.wbOps(boardId, [{ type: 'theme', theme }]);
-  },
-  async wbRename(boardId: string, name: string): Promise<void> {
-    const doc = await window.juzt.boards.rename(boardId, name);
-    if (doc) store.set((s) => ({ boardDocs: { ...s.boardDocs, [boardId]: doc }, boards: s.boards.map((b) => (b.id === boardId ? { ...b, name: doc.name } : b)) }));
-  },
-  async wbImportImage(boardId: string, at?: { x: number; y: number }): Promise<void> {
-    return actions.wbInsertImage(boardId, at);
-  },
-  async wbInsertImage(boardId: string, at?: { x: number; y: number }): Promise<void> {
-    const picked = await window.juzt.boards.pickImage();
-    if (!picked) return;
-    const doc = store.getState().boardDocs[boardId];
-    const maxSide = 900;
-    const scale = Math.min(1, maxSide / Math.max(picked.naturalW, picked.naturalH));
-    const w = Math.round(picked.naturalW * scale);
-    const h = Math.round(picked.naturalH * scale);
-    const object: WbObject = {
-      id: `img_${Date.now().toString(36)}`,
-      z: (doc?.objects.reduce((m, o) => Math.max(m, o.z), 0) ?? 0) + 1,
-      kind: 'image',
-      x: Math.round((at?.x ?? 0) - w / 2),
-      y: Math.round((at?.y ?? 0) - h / 2),
-      w,
-      h,
-      src: picked.dataUrl,
-      naturalW: picked.naturalW,
-      naturalH: picked.naturalH,
-    };
-    await actions.wbOps(boardId, [{ type: 'add', objects: [object] }]);
-  },
-  async exportBoard(boardId: string, mode: 'view' | 'all' = 'all'): Promise<void> {
-    return actions.wbExport(boardId, mode);
-  },
-  async wbExport(boardId: string, mode: 'view' | 'all' = 'all'): Promise<void> {
-    const doc = store.getState().boardDocs[boardId] ?? (await window.juzt.boards.get(boardId));
-    if (!doc) return;
-    const { renderBoardPng } = await import('../whiteboard/export');
-    const png = await renderBoardPng(doc, mode);
-    if (!png) {
-      actions.toast('Nothing to export yet', 'error');
+  toggleFavorite(): void {
+    const tab = activeTab();
+    if (!tab || !isWebTab(tab) || isInternalPage(tab.url)) {
+      actions.toast('Bookmark a website, not an internal page');
       return;
     }
-    const saved = await window.juzt.boards.exportPng(png, safeFilename(doc.name, 'png'));
-    if (saved) actions.toast(`Exported ${saved}`);
-  },
-  async createBoard(name?: string): Promise<string> {
-    const doc = await window.juzt.boards.create(name);
-    store.set((s) => ({ boardDocs: { ...s.boardDocs, [doc.id]: doc } }));
-    return doc.id;
-  },
-  async openBoard(boardId: string): Promise<void> {
-    await window.juzt.boards.openInPrep(boardId);
-  },
-  async deleteBoard(boardId: string): Promise<void> {
-    await window.juzt.boards.remove(boardId);
-    store.set((s) => ({ boards: s.boards.filter((b) => b.id !== boardId) }));
-  },
-  async removeBackground(filePath: string): Promise<void> {
-    void filePath;
-    actions.toast('Removed from the library');
-  },
-
-  /* ------------------------------------------------------------------ *
-   * Backgrounds
-   * ------------------------------------------------------------------ */
-
-  async pickBackground(target: 'live' | 'holding' | 'privacy'): Promise<void> {
-    const picked = await window.juzt.backgrounds.pick({ video: true, image: true });
-    if (!picked) return;
-    await actions.applyBackground(target, {
-      kind: picked.kind === 'video' ? 'video' : 'image',
-      path: picked.path,
-      fit: 'cover',
-      loop: true,
-      muted: true,
-      volume: 0,
-      rate: 1,
-    });
-  },
-  async applyBackground(target: 'live' | 'holding' | 'privacy', spec: BackgroundSpec): Promise<void> {
-    store.set({ settings: await window.juzt.backgrounds.apply(target, spec) });
-  },
-  async addPreset(name: string, spec: BackgroundSpec): Promise<void> {
-    await window.juzt.backgrounds.libraryAdd(name, spec);
-    store.set({ settings: await window.juzt.setSettings({}) });
-  },
-  async renamePreset(id: string, name: string): Promise<void> {
-    await window.juzt.backgrounds.libraryRename(id, name);
-    store.set({ settings: await window.juzt.setSettings({}) });
-  },
-  async removePreset(id: string): Promise<void> {
-    await window.juzt.backgrounds.libraryRemove(id);
-    store.set({ settings: await window.juzt.setSettings({}) });
-  },
-  async pickImageOnly(target: 'live' | 'holding' | 'privacy'): Promise<void> {
-    const picked = await window.juzt.backgrounds.pick({ video: false, image: true });
-    if (!picked) return;
-    await actions.applyBackground(target, { kind: 'image', path: picked.path, fit: 'cover', dim: 0 });
-  },
-
-  /* ------------------------------------------------------------------ *
-   * Scenes
-   * ------------------------------------------------------------------ */
-
-  async saveScene(name: string): Promise<void> {
-    const s = store.getState();
-    const scene: Scene = {
-      id: `scene_${Date.now().toString(36)}`,
-      name: name.slice(0, 60) || `Scene ${s.scenes.length + 1}`,
-      liveBackground: s.settings.liveBackground,
-      holdingBackground: s.settings.holdingBackground,
-      privacyBackground: s.settings.privacyBackground,
-      holdingText: s.settings.holdingText,
-      privacyTitle: s.settings.privacyTitle,
-      privacySubtitle: s.settings.privacySubtitle,
-      card: s.settings.card,
-      sizePreset: s.settings.sizePreset,
-      customScale: s.settings.customScale,
-      layout: s.settings.layout,
-      zoom: s.settings.zoom,
-      spotlight: s.spotlight,
-      masks: s.masks,
-      outputDisplayId: s.settings.outputDisplayId,
-    };
-    store.set({ scenes: await window.juzt.scenes.save(scene) });
-    actions.toast(`Scene “${scene.name}” saved`);
-  },
-  async applyScene(id: string): Promise<void> {
-    const result = await window.juzt.scenes.apply(id);
-    if (!result) return;
-    store.set({ settings: result.settings, activeSceneId: result.scene.id, spotlight: result.scene.spotlight, masks: result.scene.masks });
-  },
-  async deleteScene(id: string): Promise<void> {
-    store.set({ scenes: await window.juzt.scenes.remove(id) });
-  },
-
-  /* ------------------------------------------------------------------ *
-   * Favorites / history
-   * ------------------------------------------------------------------ */
-
-  async toggleFavorite(): Promise<void> {
-    const tab = selActiveWeb(store.getState());
-    if (!tab || tab.url.startsWith('juzt://')) {
-      actions.toast('Open a website first', 'error');
-      return;
+    const existing = store.getState().favorites.find((f) => f.url === tab.url);
+    if (existing) {
+      void api().favorites.remove(existing.id);
+      actions.toast('Removed from favorites');
+    } else {
+      void api().favorites.add({ url: tab.url, title: tab.title, favicon: tab.favicon });
+      actions.toast('Added to favorites');
     }
-    store.set({ favorites: await window.juzt.favorites.add(tab.url, tab.title, tab.favicon) });
-    actions.toast('Added to favorites');
   },
-  async removeFavorite(id: string): Promise<void> {
-    store.set({ favorites: await window.juzt.favorites.remove(id) });
+
+  removeFavorite(id: string): void {
+    void api().favorites.remove(id);
   },
-  async toggleFavoriteUrl(url: string, title: string): Promise<void> {
-    const s = store.getState();
-    const existing = s.favorites.find((f) => f.url === url);
-    if (existing) await actions.removeFavorite(existing.id);
-    else store.set({ favorites: await window.juzt.favorites.add(url, title) });
+
+  renameFavorite(id: string, title: string): void {
+    const clean = title.trim();
+    if (clean) void api().favorites.rename(id, clean);
   },
-  async clearHistory(): Promise<void> {
-    await window.juzt.history.clear();
-    store.set({ history: [] });
+
+  clearHistory(): void {
+    void api().history.clear();
+    actions.toast('History cleared');
   },
-  async removeHistory(id: string): Promise<void> {
-    await window.juzt.history.remove(id);
-    store.set((s) => ({ history: s.history.filter((h) => h.id !== id) }));
+
+  removeHistory(id: string): void {
+    void api().history.remove(id);
   },
 
   /* ------------------------------------------------------------------ *
-   * Settings / UI
+   * Settings
    * ------------------------------------------------------------------ */
 
   async setSettings(patch: Partial<Settings>): Promise<void> {
-    store.set({ settings: await window.juzt.setSettings(patch) });
+    store.set((s) => ({ settings: { ...s.settings, ...patch } }));
+    const next = await api().setSettings(patch);
+    store.set({ settings: next });
   },
-  openSettings(tab: SettingsTab = 'presentation'): void {
-    store.set({ settingsOpen: true, settingsTab: tab });
+
+  setAppearance(appearance: 'dark' | 'light'): void {
+    void actions.setSettings({ appearance });
   },
+
+  toggleTheme(): void {
+    const current = store.getState().settings.appearance;
+    actions.setAppearance(current === 'light' ? 'dark' : 'light');
+  },
+
+  setReaderFontSize(size: number): void {
+    void actions.setSettings({ readerFontSize: Math.min(32, Math.max(14, Math.round(size))) });
+  },
+
+  setVerticalTabs(on: boolean): void {
+    void actions.setSettings({ verticalTabs: on });
+  },
+
+  /* ------------------------------------------------------------------ *
+   * Chrome surfaces
+   * ------------------------------------------------------------------ */
+
+  focusAddress(): void {
+    store.set((s) => ({ addressFocus: s.addressFocus + 1 }));
+  },
+
+  openPalette(): void {
+    store.set({ paletteOpen: true, settingsOpen: false, tabSearchOpen: false, studyPanel: null, pageMenu: undefined });
+  },
+
+  closePalette(): void {
+    store.set({ paletteOpen: false });
+  },
+
+  openSettings(): void {
+    store.set({ settingsOpen: true, paletteOpen: false, tabSearchOpen: false, studyPanel: null, pageMenu: undefined });
+  },
+
   closeSettings(): void {
     store.set({ settingsOpen: false });
   },
-  setSettingsTab(tab: SettingsTab): void {
-    store.set({ settingsTab: tab });
+
+  openStudyPanel(panel: 'downloads' | 'reading' | 'extensions'): void {
+    const current = store.getState().studyPanel;
+    store.set({
+      studyPanel: current === panel ? null : panel,
+      paletteOpen: false,
+      settingsOpen: false,
+      tabSearchOpen: false,
+      pageMenu: undefined,
+    });
+    if (panel === 'extensions' && current !== 'extensions') void actions.refreshExtensions();
   },
-  setSettingsOpen(open: boolean, tab?: SettingsTab): void {
-    store.set({ settingsOpen: open, ...(tab ? { settingsTab: tab } : {}) });
+
+  closeStudyPanel(): void {
+    store.set({ studyPanel: null });
   },
-  finishOnboarding(): void {
-    store.set({ onboardOpen: false });
-    void actions.setSettings({ firstRunDone: true });
+
+  openTabSearch(): void {
+    store.set({ tabSearchOpen: true, paletteOpen: false, settingsOpen: false, studyPanel: null, pageMenu: undefined });
   },
-  toggleNotes(): void {
-    store.set((s) => ({ notesOpen: !s.notesOpen }));
+
+  closeTabSearch(): void {
+    store.set({ tabSearchOpen: false });
   },
-  setNotes(notes: string): void {
-    store.set({ notes });
+
+  closePageMenu(): void {
+    store.set({ pageMenu: undefined });
   },
-  toggleScenes(): void {
-    store.set((s) => ({ scenesOpen: !s.scenesOpen }));
+
+  closeAllOverlays(): boolean {
+    const s = store.getState();
+    if (s.pageMenu) {
+      store.set({ pageMenu: undefined });
+      return true;
+    }
+    if (s.tabSearchOpen) {
+      store.set({ tabSearchOpen: false });
+      return true;
+    }
+    if (s.paletteOpen) {
+      store.set({ paletteOpen: false });
+      return true;
+    }
+    if (s.settingsOpen) {
+      store.set({ settingsOpen: false });
+      return true;
+    }
+    if (s.studyPanel) {
+      store.set({ studyPanel: null });
+      return true;
+    }
+    if (s.find.open) {
+      actions.closeFind();
+      return true;
+    }
+    return false;
   },
-  toggleCamera(): void {
-    store.set((s) => ({ cameraOpen: !s.cameraOpen }));
+
+  /* ------------------------------------------------------------------ *
+   * Find in page
+   * ------------------------------------------------------------------ */
+
+  openFind(): void {
+    if (!activeTab() || !isWebTab(activeTab()) || isInternalPage(activeUrl() ?? '')) {
+      actions.toast('Find works on websites');
+      return;
+    }
+    store.set((s) => ({ find: { ...s.find, open: true, error: undefined }, paletteOpen: false, settingsOpen: false, tabSearchOpen: false }));
+    window.setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-stage-find]');
+      input?.focus();
+      input?.select();
+    }, 20);
   },
-  toggleDiagnostics(): void {
-    const open = !store.getState().diagOpen;
-    store.set({ diagOpen: open });
-    void window.juzt.diagnostics.enable(open);
-  },
-  setTimerMode(mode: 'off' | 'stopwatch' | 'countdown'): void {
-    store.set((s) => ({ timer: { ...s.timer, mode, running: false, base: 0, since: performance.now() } }));
-  },
-  toggleTimer(): void {
-    store.set((s) => {
-      const now = performance.now();
-      const timer = s.timer;
-      const base = timer.running ? timer.base + (now - timer.since) : timer.base;
-      return { timer: { ...timer, running: !timer.running, base, since: now } };
+
+  setFindQuery(query: string, caseSensitive = false): void {
+    store.set((s) => ({ find: { ...s.find, open: true, query, caseSensitive, error: undefined } }));
+    if (!query) {
+      void api().study.findStop().then((find) => store.set({ find }));
+      return;
+    }
+    void api().study.find({ query, findNext: false, forward: true, caseSensitive }).then((find) => {
+      if (store.getState().find.open) store.set({ find });
     });
   },
-  resetTimer(): void {
-    store.set((s) => ({ timer: { ...s.timer, base: 0, since: performance.now() } }));
+
+  findNext(forward = true): void {
+    const { find } = store.getState();
+    if (!find.open || !find.query) return;
+    void api().study.findStep({ forward, findNext: true }).then((next) => store.set({ find: next }));
   },
 
-  async setCamera(patch: Partial<CameraConfig>): Promise<void> {
-    const camera = await window.juzt.effects.camera(patch);
-    store.set((s) => ({ settings: { ...s.settings, camera } }));
-  },
-  async setOutputDisplay(id: number | null): Promise<void> {
-    store.set({ displays: await window.juzt.displays.setOutput(id) });
+  closeFind(): void {
+    void api().study.findStop().then((find) => {
+      store.set({ find: { ...find, open: false, query: '', matches: 0, activeMatch: 0 } });
+      void api().window.focusPage();
+    });
   },
 
-  /* ------------------------------------------------------------------ *
-   * Permissions
-   * ------------------------------------------------------------------ */
-
-  async respondPermission(id: string, granted: boolean, remember: boolean): Promise<void> {
-    await window.juzt.permissions.respond({ id, granted, remember });
-    store.set({ permission: undefined });
-  },
-  async pickScreenSource(id: string | null): Promise<void> {
-    const requestId = store.getState().sourceRequestId;
-    if (!requestId) return;
-    await window.juzt.permissions.pickSource({ requestId, id });
-    store.set({ screenSources: undefined, sourceRequestId: undefined });
+  /** Clear highlights without closing the find bar. */
+  async clearFindQuery(): Promise<void> {
+    await api().study.findStop();
+    store.set((s) => ({ find: { ...s.find, open: true, query: '', matches: 0, activeMatch: 0 } }));
   },
 
   /* ------------------------------------------------------------------ *
-   * Palette + commands
+   * Zoom
    * ------------------------------------------------------------------ */
 
-  openPalette(): void {
-    // Never prefill with the current address (Ctrl+L must not reveal where the
-    // teacher or the audience is); suggestions carry the context instead.
-    store.set({ paletteOpen: true, paletteValue: '' });
+  async setZoom(factor: number): Promise<void> {
+    await api().study.setZoom(factor);
   },
-  closePalette(): void {
-    store.set({ paletteOpen: false, paletteValue: '' });
+
+  async resetZoom(): Promise<void> {
+    await api().study.resetZoom();
   },
-  setPaletteValue(value: string): void {
-    store.set({ paletteValue: value });
-  },
-  suggest(input: string): CommandMatch[] {
-    return matchCommands(input);
-  },
-  /** Run `>command args` or navigate to an address / search term. */
-  async runPalette(value: string): Promise<void> {
-    const text = value.trim();
-    if (!text) return;
-    actions.closePalette();
-    if (text.startsWith('>')) {
-      const body = text.slice(1).trim();
-      const [name, ...rest] = body.split(/\s+/);
-      await actions.runCommand(name, rest.join(' '));
-      return;
+
+  zoomStep(delta: number): void {
+    const current = store.getState().settings;
+    let base = current.zoom ?? 1;
+    try {
+      const host = activeUrl() ? new URL(activeUrl() as string).host : '';
+      if (host && current.siteZoom[host]) base = current.siteZoom[host];
+    } catch {
+      /* internal page */
     }
-    await actions.navigateFromPalette(text);
+    void actions.setZoom(Math.min(3, Math.max(0.5, Math.round((base + delta) * 10) / 10)));
   },
-  async runCommand(name: string, args: string): Promise<void> {
-    const spec = COMMANDS.find((c) => c.name === name);
-    if (!spec) {
-      actions.toast(`Unknown command “${name}”`, 'error');
-      return;
+
+  /* ------------------------------------------------------------------ *
+   * Study: reading list, reader, downloads, extensions
+   * ------------------------------------------------------------------ */
+
+  async refreshStudy(): Promise<void> {
+    const study = await api().study.state();
+    store.set({
+      downloads: study.downloads,
+      readingList: study.readingList,
+      extensions: study.extensions,
+      find: study.find,
+    });
+  },
+
+  async addReading(payload?: { url?: string; title?: string; favicon?: string }): Promise<void> {
+    const list = await api().study.readingAdd(payload ?? {});
+    store.set({ readingList: list });
+    if (list.length) actions.toast('Saved to reading list');
+  },
+
+  async readingCmd(id: string, cmd: string, note?: string): Promise<void> {
+    const list = await api().study.readingCmd({ id, cmd, note });
+    store.set({ readingList: list });
+  },
+
+  async openReader(tabId?: string): Promise<void> {
+    const article = await api().study.reader(tabId);
+    if (article) {
+      store.set({ paletteOpen: false, settingsOpen: false, tabSearchOpen: false, studyPanel: null });
     }
-    const s = store.getState();
-    const arg = args.trim();
-    switch (spec.name) {
-      case 'present':
-        await actions.presentActive();
-        break;
-      case 'stop':
-        await actions.stopPresenting();
-        break;
-      case 'privacy':
-        await actions.setPrivacy(arg ? arg === 'on' : !s.live?.flags.privacy);
-        break;
-      case 'freeze':
-        await actions.setFreeze(arg ? arg === 'on' : !s.live?.flags.frozen);
-        break;
-      case 'spotlight':
-        await actions.setSpotlight({ on: arg ? arg === 'on' : !s.live?.flags.spotlight });
-        break;
-      case 'holding':
-        await actions.setHolding(arg ? arg === 'on' : true);
-        break;
-      case 'clean':
-        actions.toggleClean();
-        break;
-      case 'layout':
-        if (arg) await actions.setSettings({ layout: arg as Settings['layout'] });
-        break;
-      case 'size':
-        if (arg) await actions.setSettings({ sizePreset: arg as Settings['sizePreset'] });
-        break;
-      case 'radius':
-        if (arg) await actions.setSettings({ card: { ...s.settings.card, radius: Number(arg) as Settings['card']['radius'] } });
-        break;
-      case 'theme': {
-        const boardId = selActiveBoardId(s);
-        if (arg && boardId) await actions.wbSetTheme(boardId, arg as WhiteboardThemeId);
-        break;
-      }
-      case 'background':
-        await actions.pickBackground(arg === 'holding' || arg === 'privacy' ? arg : 'live');
-        break;
-      case 'board': {
-        const id = await actions.createBoard(arg || undefined);
-        await actions.openBoard(id);
-        break;
-      }
-      case 'scene':
-        if (arg === 'save') await actions.saveScene(`Scene ${s.scenes.length + 1}`);
-        else {
-          const scene = s.scenes[Number(arg) - 1];
-          if (scene) await actions.applyScene(scene.id);
-        }
-        break;
-      case 'export': {
-        const boardId = selActiveBoardId(s);
-        if (boardId) await actions.wbExport(boardId, arg === 'view' ? 'view' : 'all');
-        break;
-      }
-      case 'zoom':
-        if (arg) await actions.setZoom(Number(arg) / 100);
-        break;
-      case 'fullscreen':
-        await window.juzt.window.setFullscreen(true);
-        break;
-      case 'notes':
-        store.set({ notesOpen: true });
-        break;
-      case 'camera':
-        store.set({ cameraOpen: true });
-        break;
-      case 'settings':
-        actions.openSettings();
-        break;
-      case 'diagnostics':
-        actions.toggleDiagnostics();
-        break;
-      case 'quit':
-        await window.juzt.quit();
-        break;
-      default:
-        actions.toast(`“${name}” is not wired up yet`, 'error');
-        break;
-    }
+  },
+
+  async downloadCmd(id: string, cmd: string): Promise<void> {
+    await api().study.downloadCmd({ id, cmd });
+    await actions.refreshStudy();
+  },
+
+  async clearDownloads(): Promise<void> {
+    await api().study.clearDownloads();
+    await actions.refreshStudy();
+  },
+
+  async refreshExtensions(): Promise<void> {
+    const list = await api().study.extensions();
+    store.set({ extensions: list });
+  },
+
+  async addExtension(): Promise<void> {
+    const list = await api().study.extensionAdd();
+    store.set({ extensions: list });
+  },
+
+  async extensionCmd(id: string, cmd: string): Promise<void> {
+    const list = await api().study.extensionCmd({ id, cmd });
+    store.set({ extensions: list });
+  },
+
+  async openExtension(id: string): Promise<void> {
+    await api().study.extensionOpen(id);
+  },
+
+  async printPdf(): Promise<void> {
+    const saved = await api().study.printPdf();
+    if (saved) actions.toast('PDF saved');
+  },
+
+  async screenshot(save = true): Promise<void> {
+    const result = await api().study.screenshot(save);
+    if (result.ok) actions.toast(save ? 'Screenshot saved' : 'Page captured to clipboard');
+  },
+
+  /* ------------------------------------------------------------------ *
+   * Page context menu
+   * ------------------------------------------------------------------ */
+
+  async pageAction(payload: PageContextPayload, action: string): Promise<void> {
+    const ok = await api().study.pageAction({
+      action,
+      tabId: payload.tabId,
+      linkURL: payload.linkURL,
+      srcURL: payload.srcURL,
+      selectionText: payload.selectionText,
+      x: payload.x,
+      y: payload.y,
+    });
+    if (action === 'copy-link' && ok) actions.toast('Link copied');
+    if (action === 'copy-text' && ok) actions.toast('Text copied');
+    if (action === 'copy-image' && ok) actions.toast('Image address copied');
+    store.set({ pageMenu: undefined });
+  },
+
+  /* ------------------------------------------------------------------ *
+   * Keyboard helpers
+   * ------------------------------------------------------------------ */
+
+  selectTabIndex(index: number): void {
+    const tab = store.getState().tabs[index];
+    if (tab) actions.activateTab(tab.id);
   },
 };
-
-function selActiveWeb(state: ReturnType<typeof store.getState>) {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  return tab && tab.kind === 'web' ? tab : null;
-}
-
-function selActiveBoardId(state: ReturnType<typeof store.getState>): string | null {
-  const tab = state.tabs.find((t) => t.id === state.activeTabId);
-  return tab && tab.kind === 'whiteboard' ? tab.boardId : null;
-}
-
-export type Actions = typeof actions;

@@ -7,8 +7,5 @@
     "declaration": false,
     "sourceMap": false
   },
-  "include": [
-    "src/shared/**/*.ts",
-    "src/renderer/live/ink.ts"
-  ]
+  "include": ["src/shared/**/*.ts"]
 }

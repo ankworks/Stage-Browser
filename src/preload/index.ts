@@ -1,41 +1,28 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { CH, EV, LIVE_ALLOWED } from '../shared/ipc';
+import { CH, EV } from '../shared/ipc';
+import type { StageBootstrap } from '../shared/stage';
 import type {
-  BackgroundSpec,
-  CameraConfig,
-  DiagStats,
-  DisplayInfo,
+  DownloadEntry,
+  ExtensionInfo,
   Favorite,
+  FindState,
   HistoryEntry,
-  LivePayload,
-  PermissionRequest,
-  PrepBootstrap,
-  PrepUiState,
-  PrivacyMask,
-  Scene,
-  ScreenSource,
+  PageContextPayload,
+  ReaderArticle,
+  ReadingEntry,
+  Rect,
   Settings,
-  SpotlightState,
-  TabState,
+  AcceleratorInput,
+  StudyState,
   ToastMessage,
-  WbObject,
-  WbOp,
-  WhiteboardDoc,
-  WhiteboardMeta,
 } from '../shared/types';
 
 /**
- * Juzt preload bridge.
+ * Stage Browser preload bridge.
  *
- * The role is decided by main through `additionalArguments`, and only the
- * matching API surface is exposed:
- *   prep    — the full teacher workspace
- *   live    — the audience renderer: state + effects, never tabs or history
- *   overlay — the transparent ink layer
+ * One role only: the browser shell. Website tabs get no preload, so a page can
+ * never reach these channels.
  */
-
-const roleArg = process.argv.find((a) => a.startsWith('--juzt-role='));
-const ROLE: 'prep' | 'live' | 'overlay' = (roleArg?.split('=')[1] as 'prep' | 'live' | 'overlay') || 'prep';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args) as Promise<T>;
 
@@ -44,250 +31,197 @@ type Unsubscribe = () => void;
 function on<T>(channel: string, cb: (payload: T) => void): Unsubscribe {
   const listener = (_event: unknown, payload: T) => cb(payload);
   ipcRenderer.on(channel, listener);
-  return () => {
-    ipcRenderer.removeListener(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
+export interface StageApi {
+  getState: () => Promise<StageBootstrap>;
+  setSettings: (patch: Partial<Settings>) => Promise<Settings>;
+  quit: () => void;
+  clipboardWrite: (text: string) => Promise<boolean>;
+  openExternal: (url: string) => Promise<boolean>;
+
+  window: {
+    minimize: () => void;
+    toggleMaximize: () => Promise<boolean>;
+    close: () => void;
+    obscure: (on: boolean) => Promise<boolean>;
+    focusPage: () => Promise<boolean>;
+  };
+
+  tabs: {
+    create: (opts?: { url?: string; background?: boolean }) => Promise<string>;
+    close: (id: string) => void;
+    closeOthers: (id: string) => void;
+    closeRight: (id: string) => void;
+    activate: (id: string) => void;
+    reopen: () => Promise<{ kind: string; id: string } | null>;
+    reorder: (from: number, to: number) => void;
+    duplicate: (id: string) => void;
+    pin: (id: string, pinned: boolean) => void;
+    mute: (id: string, muted: boolean) => void;
+    navigate: (id: string, url: string) => Promise<boolean>;
+    back: (id: string) => void;
+    forward: (id: string) => void;
+    reload: (id: string) => void;
+    hardReload: (id: string) => void;
+    stop: (id: string) => void;
+    setZoom: (id: string, factor: number) => void;
+  };
+
+  favorites: {
+    list: () => Promise<Favorite[]>;
+    add: (payload: { url: string; title?: string; favicon?: string }) => Promise<Favorite[]>;
+    remove: (id: string) => Promise<Favorite[]>;
+    rename: (id: string, title: string) => Promise<Favorite[]>;
+  };
+
+  history: {
+    list: () => Promise<HistoryEntry[]>;
+    clear: () => Promise<boolean>;
+    remove: (id: string) => Promise<boolean>;
+  };
+
+  study: {
+    state: () => Promise<StudyState>;
+    find: (payload: { query: string; forward?: boolean; findNext?: boolean; caseSensitive?: boolean }) => Promise<FindState>;
+    findStep: (payload: { forward?: boolean; findNext?: boolean }) => Promise<FindState>;
+    findStop: () => Promise<FindState>;
+    downloads: () => Promise<DownloadEntry[]>;
+    downloadCmd: (payload: { id: string; cmd: string }) => Promise<boolean>;
+    clearDownloads: () => Promise<boolean>;
+    setZoom: (factor: number) => Promise<number>;
+    resetZoom: () => Promise<number>;
+    printPdf: () => Promise<string | null>;
+    reader: (tabId?: string) => Promise<ReaderArticle | null>;
+    getReader: (id: string) => Promise<ReaderArticle | null>;
+    readingList: () => Promise<ReadingEntry[]>;
+    readingAdd: (payload?: { url?: string; title?: string; favicon?: string }) => Promise<ReadingEntry[]>;
+    readingCmd: (payload: { id: string; cmd: string; note?: string }) => Promise<ReadingEntry[]>;
+    extensions: () => Promise<ExtensionInfo[]>;
+    extensionAdd: () => Promise<ExtensionInfo[]>;
+    extensionCmd: (payload: { id?: string; path?: string; cmd: string }) => Promise<ExtensionInfo[]>;
+    extensionOpen: (id: string) => Promise<boolean>;
+    pageAction: (payload: {
+      action: string;
+      tabId?: string;
+      linkURL?: string;
+      srcURL?: string;
+      selectionText?: string;
+      x?: number;
+      y?: number;
+    }) => Promise<boolean>;
+    screenshot: (save?: boolean) => Promise<{ ok: boolean; path?: string }>;
+  };
+
+  on: {
+    bootstrapState: (cb: (payload: StageBootstrap) => void) => Unsubscribe;
+    tabs: (cb: (payload: { order: string[]; activeId: string | null; changed: unknown[] }) => void) => Unsubscribe;
+    settings: (cb: (payload: Settings) => void) => Unsubscribe;
+    favorites: (cb: (payload: Favorite[]) => void) => Unsubscribe;
+    history: (cb: (payload: HistoryEntry[]) => void) => Unsubscribe;
+    toast: (cb: (payload: ToastMessage) => void) => Unsubscribe;
+    study: (cb: (payload: StudyState) => void) => Unsubscribe;
+    find: (cb: (payload: FindState) => void) => Unsubscribe;
+    reading: (cb: (payload: ReadingEntry[]) => void) => Unsubscribe;
+    extensions: (cb: (payload: ExtensionInfo[]) => void) => Unsubscribe;
+    pageMenu: (cb: (payload: PageContextPayload) => void) => Unsubscribe;
+    focusSearch: (cb: () => void) => Unsubscribe;
+    geom: (cb: (payload: { rect: Rect; maximized: boolean }) => void) => Unsubscribe;
+    pageShot: (cb: (dataUrl: string | null) => void) => Unsubscribe;
+    accel: (cb: (input: AcceleratorInput) => void) => Unsubscribe;
   };
 }
 
-/* ------------------------------------------------------------------ *
- * Shared (all roles)
- * ------------------------------------------------------------------ */
-
-const common = {
-  role: ROLE,
-  liveState: () => invoke<LivePayload>(CH.LIVE_REQUEST_STATE),
-  isFullscreen: () => invoke<boolean>(CH.WIN_IS_FULLSCREEN),
-  openExternal: (url: string) => invoke<boolean>(CH.SHELL_OPEN_EXTERNAL, url),
-  diagReport: (sample: Partial<DiagStats>) => invoke<boolean>(CH.DIAG_REPORT, sample),
-  on: {
-    live: (cb: (payload: LivePayload) => void) => on<LivePayload>(EV.LIVE, cb),
-    inkOp: (cb: (op: unknown) => void) => on<unknown>(EV.INK_OP, cb),
-    inkLive: (cb: (payload: unknown) => void) => on<unknown>(EV.INK_LIVE, cb),
-    laser: (cb: (payload: { points: number[]; color: string } | null) => void) => on(EV.LASER, cb),
-    frame: (cb: (payload: { kind: 'freeze' | 'protection'; dataUrl: string | null }) => void) => on(EV.FRAME, cb),
-    boardDoc: (cb: (doc: WhiteboardDoc) => void) => on<WhiteboardDoc>(EV.BOARD_DOC, cb),
-    boardOps: (cb: (payload: { boardId: string; ops: WbOp[]; rev: number }) => void) => on(EV.BOARD_OPS, cb),
-    toast: (cb: (payload: ToastMessage) => void) => on<ToastMessage>(EV.TOAST, cb),
-    diag: (cb: (payload: { renderer: Partial<DiagStats>; main: Record<string, unknown> }) => void) => on(EV.DIAG, cb),
-  },
-  /** Audience effects that PREP and the overlay may push. */
-  effects: {
-    spotlight: (patch: Partial<SpotlightState>) => invoke<boolean>(CH.LIVE_SET_SPOTLIGHT, patch),
-    laser: (points: number[], color?: string) => invoke<boolean>(CH.LIVE_LASER, { points, color }),
-    ink: (op: unknown) => invoke<boolean>(CH.LIVE_ANNOTATION, op),
-    camera: (patch: Partial<CameraConfig>) => invoke<CameraConfig>(CH.LIVE_CAMERA, patch),
-  },
-};
-
-/* ------------------------------------------------------------------ *
- * PREP
- * ------------------------------------------------------------------ */
-
-const prepApi = {
-  ...common,
-
-  getState: () => invoke<PrepBootstrap>(CH.APP_STATE),
-  setSettings: (patch: Partial<Settings>) => invoke<Settings>(CH.APP_SET_SETTINGS, patch),
-  quit: () => invoke<void>(CH.APP_QUIT),
-  clipboardWrite: (text: string) => invoke<boolean>(CH.CLIPBOARD_WRITE, text),
+const api: StageApi = {
+  getState: () => invoke<StageBootstrap>(CH.APP_STATE),
+  setSettings: (patch) => invoke<Settings>(CH.APP_SET_SETTINGS, patch),
+  quit: () => void invoke<void>(CH.APP_QUIT),
+  clipboardWrite: (text) => invoke<boolean>(CH.CLIPBOARD_WRITE, text),
+  openExternal: (url) => invoke<boolean>(CH.SHELL_OPEN_EXTERNAL, url),
 
   window: {
-    minimize: () => invoke<void>(CH.WIN_MINIMIZE),
+    minimize: () => void invoke<void>(CH.WIN_MINIMIZE),
     toggleMaximize: () => invoke<boolean>(CH.WIN_TOGGLE_MAXIMIZE),
-    close: () => invoke<void>(CH.WIN_CLOSE),
-    setFullscreen: (on: boolean) => invoke<boolean>(CH.WIN_SET_FULLSCREEN, on),
+    close: () => void invoke<void>(CH.WIN_CLOSE),
+    obscure: (state) => invoke<boolean>(CH.WIN_OBSCURE, state),
+    focusPage: () => invoke<boolean>(CH.WIN_FOCUS_PAGE),
   },
 
   tabs: {
-    create: (opts: { url?: string; kind?: 'web' | 'whiteboard'; name?: string; background?: boolean } = {}) => invoke<string>(CH.TAB_NEW, opts),
-    close: (id: string) => invoke<void>(CH.TAB_CLOSE, id),
-    closeOthers: (id: string) => invoke<void>(CH.TAB_CLOSE_OTHERS, id),
-    closeRight: (id: string) => invoke<void>(CH.TAB_CLOSE_RIGHT, id),
-    activate: (id: string) => invoke<void>(CH.TAB_ACTIVATE, id),
+    create: (opts = {}) => invoke<string>(CH.TAB_NEW, opts),
+    close: (id) => void invoke<void>(CH.TAB_CLOSE, id),
+    closeOthers: (id) => void invoke<void>(CH.TAB_CLOSE_OTHERS, id),
+    closeRight: (id) => void invoke<void>(CH.TAB_CLOSE_RIGHT, id),
+    activate: (id) => void invoke<void>(CH.TAB_ACTIVATE, id),
     reopen: () => invoke<{ kind: string; id: string } | null>(CH.TAB_REOPEN),
-    reorder: (from: number, to: number) => invoke<void>(CH.TAB_REORDER, from, to),
-    duplicate: (id: string) => invoke<void>(CH.TAB_DUPLICATE, id),
-    pin: (id: string, pinned: boolean) => invoke<void>(CH.TAB_PIN, id, pinned),
-    mute: (id: string, muted: boolean) => invoke<void>(CH.TAB_MUTE, id, muted),
-    navigate: (id: string, url: string) => invoke<boolean>(CH.TAB_NAVIGATE, id, url),
-    back: (id: string) => invoke<void>(CH.TAB_BACK, id),
-    forward: (id: string) => invoke<void>(CH.TAB_FORWARD, id),
-    reload: (id: string) => invoke<void>(CH.TAB_RELOAD, id),
-    hardReload: (id: string) => invoke<void>(CH.TAB_HARD_RELOAD, id),
-    stop: (id: string) => invoke<void>(CH.TAB_STOP, id),
-    zoom: (id: string, factor: number) => invoke<void>(CH.TAB_ZOOM, id, factor),
-    openPrivate: (url: string) => invoke<string>(CH.TAB_OPEN_PRIVATE, url),
-  },
-
-  boards: {
-    list: () => invoke<WhiteboardMeta[]>(CH.BOARD_LIST),
-    create: (name?: string) => invoke<WhiteboardDoc>(CH.BOARD_CREATE, name),
-    get: (id: string) => invoke<WhiteboardDoc | null>(CH.BOARD_GET, id),
-    ops: (boardId: string, ops: WbOp[]) => invoke<{ ok: boolean; canUndo: boolean; canRedo: boolean; rev: number }>(CH.BOARD_OP, { boardId, ops }),
-    rename: (id: string, name: string) => invoke<WhiteboardDoc | null>(CH.BOARD_RENAME, id, name),
-    remove: (id: string) => invoke<boolean>(CH.BOARD_DELETE, id),
-    openInPrep: (id: string) => invoke<string>(CH.BOARD_OPEN_PREP, id),
-    present: (id: string) => invoke<LivePayload>(CH.BOARD_OPEN_LIVE, id),
-    undoHint: (id: string) => invoke<{ canUndo: boolean; canRedo: boolean }>(CH.BOARD_UNDO_HINT, id),
-    undo: (id: string) => invoke<{ ok: boolean; canUndo: boolean; canRedo: boolean }>(CH.BOARD_UNDO, id),
-    redo: (id: string) => invoke<{ ok: boolean; canUndo: boolean; canRedo: boolean }>(CH.BOARD_REDO, id),
-    pickImage: () => invoke<{ dataUrl: string; naturalW: number; naturalH: number; name: string } | null>(CH.BOARD_IMAGE_PICK),
-    exportPng: (dataUrl: string, name?: string) => invoke<string | null>(CH.BOARD_EXPORT_PICK, { dataUrl, name }),
-  },
-
-  present: {
-    tab: (id: string) => invoke<LivePayload>(CH.LIVE_PRESENT_TAB, id),
-    board: (id: string) => invoke<LivePayload>(CH.LIVE_PRESENT_BOARD, id),
-    stop: () => invoke<LivePayload>(CH.LIVE_STOP),
-    setPrivacy: (on: boolean) => invoke<LivePayload>(CH.LIVE_SET_PRIVACY, on),
-    setFreeze: (on: boolean) => invoke<LivePayload>(CH.LIVE_SET_FREEZE, on),
-    setHolding: (patch: { text?: string; on?: boolean }) => invoke<LivePayload>(CH.LIVE_SET_HOLDING, patch),
-    setMasks: (masks: PrivacyMask[]) => invoke<LivePayload>(CH.LIVE_SET_MASKS, masks),
-    requestState: () => invoke<LivePayload>(CH.LIVE_REQUEST_STATE),
-    openWindow: () => invoke<boolean>(CH.LIVE_OPEN_WINDOW),
-    focusWindow: () => invoke<boolean>(CH.LIVE_FOCUS_WINDOW),
-    preview: (enabled: boolean) => invoke<boolean>(CH.LIVE_PREVIEW, enabled),
-    /** Navigate the audience page while it is presented (dual mode). */
-    navigateAudience: (url: string) => invoke<boolean>(CH.LIVE_NAVIGATE, url),
-  },
-
-  scenes: {
-    list: () => invoke<{ scenes: Scene[]; activeSceneId?: string }>(CH.SCENE_LIST),
-    save: (scene: Scene) => invoke<Scene[]>(CH.SCENE_SAVE, scene),
-    remove: (id: string) => invoke<Scene[]>(CH.SCENE_DELETE, id),
-    apply: (id: string) => invoke<{ settings: Settings; scene: Scene } | null>(CH.SCENE_APPLY, id),
-  },
-
-  backgrounds: {
-    pick: (opts: { video?: boolean; image?: boolean } = {}) =>
-      invoke<{ path: string; url: string; kind: 'image' | 'video' | 'audio'; name: string; thumb?: string } | null>(CH.BG_PICK, opts),
-    apply: (target: 'live' | 'holding' | 'privacy', spec: BackgroundSpec) => invoke<Settings>(CH.BG_APPLY, { target, spec }),
-    libraryAdd: (name: string, spec: BackgroundSpec) => invoke<{ id: string }>(CH.BG_LIBRARY_ADD, { name, spec }),
-    libraryRename: (id: string, name: string) => invoke<void>(CH.BG_LIBRARY_UPDATE, { id, name }),
-    libraryRemove: (id: string) => invoke<void>(CH.BG_LIBRARY_REMOVE, id),
+    reorder: (from, to) => void invoke<void>(CH.TAB_REORDER, from, to),
+    duplicate: (id) => void invoke<void>(CH.TAB_DUPLICATE, id),
+    pin: (id, pinned) => void invoke<void>(CH.TAB_PIN, id, pinned),
+    mute: (id, muted) => void invoke<void>(CH.TAB_MUTE, id, muted),
+    navigate: (id, url) => invoke<boolean>(CH.TAB_NAVIGATE, id, url),
+    back: (id) => void invoke<void>(CH.TAB_BACK, id),
+    forward: (id) => void invoke<void>(CH.TAB_FORWARD, id),
+    reload: (id) => void invoke<void>(CH.TAB_RELOAD, id),
+    hardReload: (id) => void invoke<void>(CH.TAB_HARD_RELOAD, id),
+    stop: (id) => void invoke<void>(CH.TAB_STOP, id),
+    setZoom: (id, factor) => void invoke<void>(CH.TAB_ZOOM, id, factor),
   },
 
   favorites: {
     list: () => invoke<Favorite[]>(CH.FAV_LIST),
-    add: (url: string, title?: string, favicon?: string) => invoke<Favorite[]>(CH.FAV_ADD, { url, title, favicon }),
-    remove: (id: string) => invoke<Favorite[]>(CH.FAV_REMOVE, id),
-    rename: (id: string, title: string) => invoke<Favorite[]>(CH.FAV_RENAME, { id, title }),
+    add: (payload) => invoke<Favorite[]>(CH.FAV_ADD, payload),
+    remove: (id) => invoke<Favorite[]>(CH.FAV_REMOVE, id),
+    rename: (id, title) => invoke<Favorite[]>(CH.FAV_RENAME, { id, title }),
   },
 
   history: {
     list: () => invoke<HistoryEntry[]>(CH.HIST_LIST),
     clear: () => invoke<boolean>(CH.HIST_CLEAR),
-    remove: (id: string) => invoke<boolean>(CH.HIST_REMOVE, id),
+    remove: (id) => invoke<boolean>(CH.HIST_REMOVE, id),
   },
 
-  permissions: {
-    respond: (payload: { id: string; granted: boolean; remember?: boolean }) => invoke<boolean>(CH.PERM_RESPOND, payload),
-    pickSource: (payload: { requestId: string; id: string | null }) => invoke<boolean>(CH.PERM_PICK_SOURCE, payload),
-  },
-
-  displays: {
-    list: () => invoke<DisplayInfo[]>(CH.DISPLAY_LIST),
-    setOutput: (id: number | null) => invoke<DisplayInfo[]>(CH.DISPLAY_SET_OUTPUT, id),
-  },
-
-  files: {
-    saveImageData: (dataUrl: string, name?: string) => invoke<string | null>(CH.FILE_SAVE_IMAGE_DATA, { dataUrl, name }),
-    openImage: () => invoke<{ dataUrl: string; naturalW: number; naturalH: number; name: string } | null>(CH.FILE_OPEN_IMAGE),
-    openMedia: (opts: { video?: boolean } = {}) => invoke<{ path: string; url: string; kind: string; name: string } | null>(CH.FILE_OPEN_MEDIA, opts),
-  },
-
-  diagnostics: {
-    enable: (on: boolean) => invoke<boolean>(CH.DIAG_ENABLE, on),
-    report: (sample: Partial<DiagStats>) => invoke<boolean>(CH.DIAG_REPORT, sample),
-  },
-
-  ink: {
-    /** PREP toolbar → overlay owner (undo/redo/clear). */
-    command: (cmd: 'undo' | 'redo' | 'clear') => invoke<boolean>(CH.INK_CMD, { cmd }),
-    /** Overlay → main → PREP toolbar (button states). */
-    state: (state: { count: number; canUndo: boolean; canRedo: boolean }) => invoke<boolean>(CH.INK_STATE, state),
-  },
-
-  ui: {
-    /** Drives overlay visibility in main (ink layer / cover) without a state push. */
-    state: (ui: Partial<PrepUiState>) => invoke<boolean>(CH.UI_STATE, ui),
+  study: {
+    state: () => invoke<StudyState>(CH.STUDY_STATE),
+    find: (payload) => invoke<FindState>(CH.STUDY_FIND, payload),
+    findStep: (payload) => invoke<FindState>(CH.STUDY_FIND_STEP, payload),
+    findStop: () => invoke<FindState>(CH.STUDY_FIND_STOP),
+    downloads: () => invoke<DownloadEntry[]>(CH.STUDY_DOWNLOADS),
+    downloadCmd: (payload) => invoke<boolean>(CH.STUDY_DOWNLOAD_CMD, payload),
+    clearDownloads: () => invoke<boolean>(CH.STUDY_DOWNLOAD_CLEAR),
+    setZoom: (factor) => invoke<number>(CH.STUDY_ZOOM_SET, factor),
+    resetZoom: () => invoke<number>(CH.STUDY_ZOOM_RESET),
+    printPdf: () => invoke<string | null>(CH.STUDY_PRINT_PDF),
+    reader: (tabId) => invoke<ReaderArticle | null>(CH.STUDY_READER, tabId),
+    getReader: (id) => invoke<ReaderArticle | null>(CH.STUDY_READER_GET, id),
+    readingList: () => invoke<ReadingEntry[]>(CH.STUDY_READING_LIST),
+    readingAdd: (payload = {}) => invoke<ReadingEntry[]>(CH.STUDY_READING_ADD, payload),
+    readingCmd: (payload) => invoke<ReadingEntry[]>(CH.STUDY_READING_CMD, payload),
+    extensions: () => invoke<ExtensionInfo[]>(CH.STUDY_EXTENSIONS),
+    extensionAdd: () => invoke<ExtensionInfo[]>(CH.STUDY_EXTENSION_ADD),
+    extensionCmd: (payload) => invoke<ExtensionInfo[]>(CH.STUDY_EXTENSION_CMD, payload),
+    extensionOpen: (id) => invoke<boolean>(CH.STUDY_EXTENSION_OPEN, id),
+    pageAction: (payload) => invoke<boolean>(CH.STUDY_PAGE_ACTION, payload),
+    screenshot: (save = false) => invoke<{ ok: boolean; path?: string }>(CH.STUDY_SCREENSHOT, save),
   },
 
   on: {
-    ...common.on,
-    bootstrapState: (cb: (payload: unknown) => void) => on(EV.STATE, cb),
-    geom: (cb: (payload: { single: boolean; windowSize: { width: number; height: number }; card: { x: number; y: number; width: number; height: number }; overlay: { x: number; y: number; width: number; height: number } | null }) => void) =>
-      on(EV.GEOM, cb),
-    tabs: (cb: (payload: { order: string[]; activeId: string | null; changed: TabState[] }) => void) => on(EV.TABS, cb),
-    settings: (cb: (payload: Settings) => void) => on<Settings>(EV.SETTINGS, cb),
-    scenes: (cb: (payload: { scenes: Scene[]; activeSceneId?: string }) => void) => on(EV.SCENES, cb),
-    favorites: (cb: (payload: Favorite[]) => void) => on<Favorite[]>(EV.FAVORITES, cb),
-    history: (cb: (payload: HistoryEntry[]) => void) => on<HistoryEntry[]>(EV.HISTORY, cb),
-    boards: (cb: (payload: WhiteboardMeta[]) => void) => on<WhiteboardMeta[]>(EV.BOARD_LIST, cb),
-    permissionRequest: (cb: (payload: PermissionRequest) => void) => on<PermissionRequest>(EV.PERM_REQUEST, cb),
-    screenSources: (cb: (payload: { sources: ScreenSource[]; requestId: string }) => void) => on(EV.PERM_SOURCES, cb),
-    presentProgress: (cb: (payload: { stage: string; message?: string }) => void) => on(EV.PRESENT_PROGRESS, cb),
-    previewFrame: (cb: (dataUrl: string) => void) => on<string>(EV.PREVIEW_FRAME, cb),
-    focusRestored: (cb: (payload: { ms: number }) => void) => on<{ ms: number }>(EV.FOCUS_RESTORED, cb),
-    inkState: (cb: (payload: { kind?: string; count?: number; canUndo?: boolean; canRedo?: boolean }) => void) => on(EV.INK_CMD_EV, cb),
+    bootstrapState: (cb) => on<StageBootstrap>(EV.STATE, cb),
+    tabs: (cb) => on(EV.TABS, cb),
+    settings: (cb) => on<Settings>(EV.SETTINGS, cb),
+    favorites: (cb) => on<Favorite[]>(EV.FAVORITES, cb),
+    history: (cb) => on<HistoryEntry[]>(EV.HISTORY, cb),
+    toast: (cb) => on<ToastMessage>(EV.TOAST, cb),
+    study: (cb) => on<StudyState>(EV.STUDY, cb),
+    find: (cb) => on<FindState>(EV.FIND, cb),
+    reading: (cb) => on<ReadingEntry[]>(EV.READING, cb),
+    extensions: (cb) => on<ExtensionInfo[]>(EV.EXTENSIONS, cb),
+    pageMenu: (cb) => on<PageContextPayload>(EV.PAGE_MENU, cb),
+    focusSearch: (cb) => on<void>(EV.FOCUS_SEARCH, () => cb()),
+    geom: (cb) => on(EV.GEOM, cb),
+    pageShot: (cb) => on<string | null>(EV.SHOT, cb),
+    accel: (cb) => on<AcceleratorInput>(EV.ACCEL, cb),
   },
 };
 
-/* ------------------------------------------------------------------ *
- * LIVE renderer (audience output)
- * ------------------------------------------------------------------ */
-
-const liveApi = {
-  ...common,
-  getState: () => invoke<LivePayload>(CH.LIVE_REQUEST_STATE),
-  requestState: () => invoke<LivePayload>(CH.LIVE_REQUEST_STATE),
-  on: {
-    ...common.on,
-    live: (cb: (payload: LivePayload) => void) => on<LivePayload>(EV.LIVE, cb),
-    geom: (cb: (payload: unknown) => void) => on(EV.GEOM, cb),
-  },
-};
-
-/* ------------------------------------------------------------------ *
- * Overlay view (transparent ink layer)
- * ------------------------------------------------------------------ */
-
-const overlayApi = {
-  ...common,
-  ink: {
-    command: (cmd: 'undo' | 'redo' | 'clear') => invoke<boolean>(CH.INK_CMD, { cmd }),
-    state: (state: { count: number; canUndo: boolean; canRedo: boolean }) => invoke<boolean>(CH.INK_STATE, state),
-  },
-  on: {
-    ...common.on,
-    live: (cb: (payload: LivePayload) => void) => on<LivePayload>(EV.LIVE, cb),
-    geom: (cb: (payload: { single: boolean; windowSize: { width: number; height: number }; card: { x: number; y: number; width: number; height: number }; overlay: { x: number; y: number; width: number; height: number } | null }) => void) => on(EV.GEOM, cb),
-    tool: (
-      cb: (payload: {
-        tool: string;
-        style: { color: string; size: number; opacity: number; fontSize: number };
-        number: number;
-        single: boolean;
-        /** True while the camera preview is being repositioned on the card. */
-        cameraDrag?: boolean;
-      }) => void,
-    ) => on(EV.TOOL, cb),
-    inkCmd: (cb: (payload: { cmd?: string }) => void) => on(EV.INK_CMD_EV, cb),
-  },
-};
-
-const api = ROLE === 'live' ? liveApi : ROLE === 'overlay' ? overlayApi : prepApi;
-
-// A tiny guard so a stray `window.juzt.somePrepThing` in the audience renderer
-// throws loudly in development instead of silently doing nothing.
-if (ROLE !== 'prep') {
-  Object.defineProperty(api, 'prepOnly', { value: true, enumerable: false });
-}
-
-contextBridge.exposeInMainWorld('juzt', api);
 contextBridge.exposeInMainWorld('stage', api);
-
-export type JuztApi = typeof prepApi;
-export type JuztLiveApi = typeof liveApi;
-export type JuztOverlayApi = typeof overlayApi;
-export { ROLE, LIVE_ALLOWED };

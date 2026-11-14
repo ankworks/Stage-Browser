@@ -1,162 +1,88 @@
 import React, { useSyncExternalStore } from 'react';
 import type {
-  DisplayInfo,
+  DownloadEntry,
+  ExtensionInfo,
   Favorite,
+  FindState,
   HistoryEntry,
-  LivePayload,
-  PermissionRequest,
-  PrivacyMask,
-  PrepBootstrap,
-  Scene,
-  ScreenSource,
+  PageContextPayload,
+  ReadingEntry,
   Settings,
-  SpotlightState,
+  StudyState,
   TabState,
   ToastMessage,
-  ToolId,
-  WbStyle,
-  WbView,
-  WbTool,
-  WhiteboardDoc,
-  WhiteboardMeta,
 } from '../../shared/types';
 import { tabLabel, isWebTab } from '../../shared/types';
+import type { StageBootstrap } from '../../shared/stage';
 
-/**
- * PREP renderer store.
- *
- * Deliberately tiny: a single snapshot object, subscribers, and a `useSel`
- * selector hook. High-frequency streams (pointer moves, live strokes, the laser
- * trail) never enter this store — they live inside the effect layers.
- */
+/** Stage PREP store: one snapshot, subscribers, a selector hook. */
 
-export interface InkStyle {
-  color: string;
-  size: number;
-  opacity: number;
-  fontSize: number;
+export interface ContentRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
-
-export interface TimerState {
-  mode: 'off' | 'stopwatch' | 'countdown';
-  running: boolean;
-  base: number;
-  since: number;
-  targetMs: number;
-}
-
-export type SettingsTab = 'presentation' | 'backgrounds' | 'whiteboard' | 'tabs' | 'camera' | 'permissions' | 'about';
 
 export interface UiState {
   ready: boolean;
   appName: string;
   version: string;
   dev: boolean;
+  platform: string;
 
   settings: Settings;
-  scenes: Scene[];
-  activeSceneId?: string;
   tabs: TabState[];
   activeTabId: string | null;
-  boards: WhiteboardMeta[];
-  boardDocs: Record<string, WhiteboardDoc>;
   favorites: Favorite[];
   history: HistoryEntry[];
-  displays: DisplayInfo[];
-  live: LivePayload | null;
-  presentProgress: { stage: string; message?: string } | null;
+
+  toasts: ToastMessage[];
 
   paletteOpen: boolean;
-  paletteValue: string;
   settingsOpen: boolean;
-  settingsTab: SettingsTab;
-  scenesOpen: boolean;
-  notesOpen: boolean;
-  notes: string;
-  timer: TimerState;
-  cameraOpen: boolean;
-  diagOpen: boolean;
-  onboardOpen: boolean;
-  contextMenu?: { kind: 'tab' | 'card'; x: number; y: number; tabId?: string };
+  studyPanel: 'downloads' | 'reading' | 'extensions' | null;
+  tabSearchOpen: boolean;
+  pageMenu?: PageContextPayload;
 
-  tool: ToolId;
-  ink: InkStyle;
-  masks: PrivacyMask[];
-  spotlight: SpotlightState;
-  inkCount: number;
-  canUndoInk: boolean;
-  canRedoInk: boolean;
-  cleanMode: boolean;
-  holdingScreen: boolean;
-  /** The teacher is repositioning the camera preview on the card. */
-  cameraDrag: boolean;
+  downloads: DownloadEntry[];
+  readingList: ReadingEntry[];
+  extensions: ExtensionInfo[];
+  find: FindState;
 
-  wbTool: WbTool;
-  wbStyle: InkStyle & { width?: number; fill?: string };
-  wbNumber: number;
-  wbSelection: string[];
-  wbView: Record<string, WbView>;
-  wbCanUndo: boolean;
-  wbCanRedo: boolean;
-
-  permission?: PermissionRequest;
-  screenSources?: ScreenSource[];
-  sourceRequestId?: string;
-  previewFrame?: string;
-  previewEnabled: boolean;
-  toasts: ToastMessage[];
-  diagStats: Record<string, unknown>;
-  addressHint: string;
+  contentRect: ContentRect;
+  pageShot: string | null;
+  maximized: boolean;
+  addressFocus: number;
 }
+
+const EMPTY_FIND: FindState = { open: false, query: '', matches: 0, activeMatch: 0, caseSensitive: false };
 
 const initialState: UiState = {
   ready: false,
-  appName: 'Juzt',
+  appName: 'Stage Browser',
   version: '1.0.0',
   dev: false,
+  platform: 'win32',
   settings: {} as Settings,
-  scenes: [],
   tabs: [],
   activeTabId: null,
-  boards: [],
-  boardDocs: {},
   favorites: [],
   history: [],
-  displays: [],
-  live: null,
-  presentProgress: null,
-  paletteOpen: false,
-  paletteValue: '',
-  settingsOpen: false,
-  settingsTab: 'presentation',
-  scenesOpen: false,
-  notesOpen: false,
-  notes: '',
-  timer: { mode: 'off', running: false, base: 0, since: 0, targetMs: 5 * 60 * 1000 },
-  cameraOpen: false,
-  diagOpen: false,
-  onboardOpen: false,
-  tool: 'cursor',
-  ink: { color: '#4aa3ff', size: 4, opacity: 1, fontSize: 32 },
-  masks: [],
-  spotlight: { on: false, x: 0.5, y: 0.5, r: 0.24, dim: 0.6, shape: 'circle' },
-  inkCount: 0,
-  canUndoInk: false,
-  canRedoInk: false,
-  cleanMode: false,
-  holdingScreen: false,
-  cameraDrag: false,
-  wbTool: 'pen',
-  wbStyle: { color: '#4aa3ff', size: 4, opacity: 1, fontSize: 32 },
-  wbNumber: 1,
-  wbSelection: [],
-  wbView: {},
-  wbCanUndo: false,
-  wbCanRedo: false,
-  previewEnabled: false,
   toasts: [],
-  diagStats: {},
-  addressHint: '',
+  paletteOpen: false,
+  settingsOpen: false,
+  studyPanel: null,
+  tabSearchOpen: false,
+  downloads: [],
+  readingList: [],
+  extensions: [],
+  find: EMPTY_FIND,
+  // Matches main: 236px tab rail, 46px titlebar + 50px address bar.
+  contentRect: { x: 236, y: 96, width: 1084, height: 704 },
+  pageShot: null,
+  maximized: false,
+  addressFocus: 0,
 };
 
 class Store {
@@ -186,35 +112,23 @@ class Store {
     this.listeners.forEach((l) => l());
   }
 
-  hydrate(bootstrap: PrepBootstrap): void {
+  hydrate(bootstrap: StageBootstrap): void {
     this.state = {
       ...this.state,
       ready: true,
       appName: bootstrap.appName,
       version: bootstrap.version,
       dev: bootstrap.dev,
+      platform: bootstrap.platform,
       settings: bootstrap.settings,
-      scenes: bootstrap.scenes,
-      activeSceneId: bootstrap.activeSceneId,
       tabs: bootstrap.tabs,
       activeTabId: bootstrap.activeTabId,
-      boards: bootstrap.boards,
       favorites: bootstrap.favorites,
       history: bootstrap.history,
-      displays: bootstrap.displays,
-      live: bootstrap.live,
-      masks: bootstrap.live.masks,
-      spotlight: bootstrap.live.spotlight,
-      onboardOpen: !bootstrap.settings.firstRunDone,
-      diagOpen: bootstrap.diagnosticsEnabled,
-      ink: {
-        color: bootstrap.ui.style?.color ?? this.state.ink.color,
-        size: bootstrap.ui.style?.size ?? this.state.ink.size,
-        opacity: bootstrap.ui.style?.opacity ?? this.state.ink.opacity,
-        fontSize: bootstrap.ui.style?.fontSize ?? this.state.ink.fontSize,
-      },
-      tool: (bootstrap.ui.tool as ToolId) ?? 'cursor',
-      wbNumber: bootstrap.settings.numberStampStart ?? 1,
+      downloads: bootstrap.study.downloads,
+      readingList: bootstrap.study.readingList,
+      extensions: bootstrap.study.extensions,
+      find: bootstrap.study.find,
     };
     this.listeners.forEach((l) => l());
   }
@@ -222,15 +136,6 @@ class Store {
 
 export const store = new Store();
 
-/**
- * Selector hook.
- *
- * `useSyncExternalStore` requires a *stable* snapshot: a selector that builds a
- * new object on every call would re-render forever. The memo below only
- * recomputes when the store state identity changed and only reuses the previous
- * value when the custom equality says it is the same — so `useSel(sel.tabTitles,
- * shallowEqual)` is safe and cheap.
- */
 export function useSel<T>(selector: (s: UiState) => T, equal: (a: T, b: T) => boolean = Object.is): T {
   const cache = React.useRef<{ state: UiState | null; value: T }>({ state: null, value: undefined as unknown as T });
   const selectorRef = React.useRef(selector);
@@ -254,7 +159,6 @@ export function useSel<T>(selector: (s: UiState) => T, equal: (a: T, b: T) => bo
   return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
 }
 
-/** Shallow array/object equality for selectors that build new values. */
 export function shallowEqual<T>(a: T, b: T): boolean {
   if (Object.is(a, b)) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
@@ -271,40 +175,21 @@ export const sel = {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
     return isWebTab(tab) ? tab : null;
   },
-  activeBoardId: (s: UiState): string | null => {
+  activeUrl: (s: UiState): string => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return tab && tab.kind === 'whiteboard' ? tab.boardId : null;
-  },
-  activeBoard: (s: UiState): WhiteboardDoc | null => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    if (!tab || tab.kind !== 'whiteboard') return null;
-    return s.boardDocs[tab.boardId] ?? null;
+    return tab && tab.kind === 'web' ? tab.url : '';
   },
   internalPage: (s: UiState): string | null => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
     if (!isWebTab(tab)) return null;
-    return tab.url.startsWith('juzt://') ? tab.url.replace('juzt://', '') : null;
+    return tab.url.startsWith('stage://') ? tab.url : null;
   },
-  presentedLabel: (s: UiState): string | null => s.live?.presentation.label ?? null,
-  status: (s: UiState): 'holding' | 'live' | 'frozen' | 'privacy' => {
-    if (!s.live) return 'holding';
-    if (s.live.flags.privacy) return 'privacy';
-    if (s.live.flags.frozen) return 'frozen';
-    if (s.live.presentation.kind === 'holding') return 'holding';
-    return 'live';
+  tabTitles: (s: UiState) => s.tabs.map((tab) => ({ id: tab.id, label: tabLabel(tab), favicon: tab.kind === 'web' ? tab.favicon : undefined, kind: tab.kind })),
+  favoriteForActive: (s: UiState): Favorite | null => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    if (!tab || tab.kind !== 'web') return null;
+    return s.favorites.find((f) => f.url === tab.url) ?? null;
   },
-  tabTitles: (s: UiState): { id: string; label: string; favicon?: string; pinned: boolean; muted: boolean; kind: TabState['kind']; url?: string }[] =>
-    s.tabs.map((tab) => ({
-      id: tab.id,
-      label: tabLabel(tab),
-      favicon: tab.kind === 'web' ? tab.favicon : undefined,
-      pinned: tab.pinned,
-      muted: tab.kind === 'web' ? tab.muted : false,
-      kind: tab.kind,
-      // The palette shows suggestions only; it is never rendered into LIVE.
-      url: tab.kind === 'web' ? tab.url : undefined,
-    })),
-  favorites: (s: UiState): Favorite[] => s.favorites,
-  /** Newest first, capped: the palette never renders the whole history. */
-  historyPreview: (s: UiState): HistoryEntry[] => s.history.slice(0, 24),
 };
+
+export { EMPTY_FIND };

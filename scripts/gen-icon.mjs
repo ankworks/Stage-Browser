@@ -1,13 +1,13 @@
 /**
- * Juzt icon generator — no dependencies, no network.
+ * Stage icon generator — no dependencies, no network.
  *
  *   node scripts/gen-icon.mjs
  *
  * Writes `build/icon.png` (512²) and `build/icon.ico` (16…256, PNG payloads),
  * both built from the same drawing routine so they can never drift apart.
  *
- * The mark is geometric and minimal: a rounded dark tile, a white "J" stroke and
- * a blue→violet accent dot — the same shapes used by the in-app logo.
+ * The mark is geometric and minimal: a deep ink tile with three ascending
+ * steps — the same shapes used by the in-app logo.
  */
 
 import { deflateSync } from 'node:zlib';
@@ -86,15 +86,16 @@ function sdArc(px, py, cx, cy, radius, from, to) {
 }
 
 /**
- * Draw the Juzt mark into a unit square (0..1 coordinates) by sampling with
+ * Draw the Stage mark into a unit square (0..1 coordinates) by sampling with
  * `covers()`. Everything scales linearly, so 16px and 512px stay identical.
  */
 function drawMark(canvas) {
   const N = canvas.n;
-  const tile = hex('#0B0E14');
-  const ink = hex('#EDF3FF');
-  const accentA = hex('#4AA3FF');
-  const accentB = hex('#8B6BFF');
+  const tile = hex('#0b0e15');
+  const tileTop = hex('#151d30');
+  const white = hex('#f2f6ff');
+  const accentA = hex('#8ab4ff');
+  const accentB = hex('#5b7cfa');
 
   const feather = 1 / N;
 
@@ -103,34 +104,31 @@ function drawMark(canvas) {
       const u = (x + 0.5) / N;
       const v = (y + 0.5) / N;
 
-      // Rounded tile background (with a soft vertical gradient so it reads as
-      // "premium dark" instead of flat black).
+      // Rounded tile with a soft top-lit gradient.
       const tileD = sdRoundRect(u, v, 0.5, 0.5, 0.5, 0.5, 0.235);
       const tileCoverage = Math.min(1, Math.max(0, 0.5 - tileD / feather));
       if (tileCoverage > 0) {
-        const shade = mix(tile, hex('#161C2B'), Math.min(1, v * 1.05));
-        blend(canvas, x, y, shade, tileCoverage);
+        blend(canvas, x, y, mix(tileTop, tile, Math.min(1, v * 1.1)), tileCoverage);
       }
 
-      // A thin gradient ring hugging the tile edge — the brand accent.
-      const ringD = Math.abs(sdRoundRect(u, v, 0.5, 0.5, 0.5, 0.235)) - 0.008;
+      // A thin accent ring hugging the tile edge.
+      const ringD = Math.abs(sdRoundRect(u, v, 0.5, 0.5, 0.5, 0.235)) - 0.007;
       const ringCoverage = Math.min(1, Math.max(0, 0.5 - ringD / feather));
       if (ringCoverage > 0) {
-        blend(canvas, x, y, mix(accentA, accentB, Math.min(1, Math.max(0, (u + v) / 2))), ringCoverage * 0.5);
+        blend(canvas, x, y, mix(accentA, accentB, Math.min(1, Math.max(0, (u + v) / 2))), ringCoverage * 0.55);
       }
 
-      // The "J": a stem plus a hook, both drawn as round-capped strokes.
-      const stroke = 0.088;
-      const stemD = sdSegment(u, v, 0.612, 0.272, 0.612, 0.548) - stroke / 2;
-      const hookD = sdArc(u, v, 0.478, 0.548, 0.134, 0, 0.5) - stroke / 2;
-      const jD = Math.min(stemD, hookD);
-      const jCoverage = Math.min(1, Math.max(0, 0.5 - jD / feather));
-      if (jCoverage > 0) blend(canvas, x, y, ink, jCoverage);
-
-      // Accent dot to the upper right of the stem.
-      const dotD = Math.hypot(u - 0.742, v - 0.276) - 0.052;
-      const dotCoverage = Math.min(1, Math.max(0, 0.5 - dotD / feather));
-      if (dotCoverage > 0) blend(canvas, x, y, mix(accentA, accentB, 0.65), dotCoverage);
+      // Three ascending steps: short → mid → tall. The tallest is bone-white.
+      const bars = [
+        { cx: 0.305, cy: 0.665, hw: 0.072, hh: 0.105, color: mix(accentA, accentB, 0.15) },
+        { cx: 0.5, cy: 0.59, hw: 0.072, hh: 0.18, color: mix(accentA, accentB, 0.55) },
+        { cx: 0.695, cy: 0.5, hw: 0.072, hh: 0.27, color: white },
+      ];
+      for (const bar of bars) {
+        const d = sdRoundRect(u, v, bar.cx, bar.cy, bar.hw, bar.hh, 0.036);
+        const coverage = Math.min(1, Math.max(0, 0.5 - d / feather));
+        if (coverage > 0) blend(canvas, x, y, bar.color, coverage);
+      }
     }
   }
 

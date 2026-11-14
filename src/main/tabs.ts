@@ -1,13 +1,13 @@
-import { WebContentsView } from 'electron';
+import { WebContentsView, type ContextMenuParams, type WebContents } from 'electron';
 import { EMPTY_TABS, activate, activateIndex, activateNumber, closeOthers, closeTab as closeInList, closeToRight, cycle, insertIndexFor, openTab, reopen as reopenInList, reorder as reorderInList, setPinned, updateTab, type TabList } from '../shared/tabs';
-import { tabLabel, type TabState, type WebTab, type WbView } from '../shared/types';
+import { tabLabel, type AcceleratorInput, type PageContextPayload, type TabState, type WebTab, type WbView } from '../shared/types';
 import { hostOf, isInternalPage, resolveInput } from '../shared/url';
 
 /**
  * Tab bookkeeping + one WebContentsView per web tab.
  *
  * Placement is deliberately NOT done here — main/app.ts owns the geometry and
- * windows.ts is the only place `setBounds` is ever called. This class only:
+ * is the only place `setBounds` is ever called. This class only:
  *   • keeps the tab list (order, pins, active id, reopen stack);
  *   • creates/destroys views lazily so background tabs cost nothing;
  *   • reflects navigation back into the tab record (title, favicon, history);
@@ -19,16 +19,23 @@ import { hostOf, isInternalPage, resolveInput } from '../shared/url';
 export interface TabEvents {
   /** Tab metadata changed; `structure` means order/ids/active changed too. */
   onChanged(changed: TabState[], structure: boolean): void;
-  /** A main-frame navigation finished — PREP-only history, never sent to LIVE. */
+  /** A main-frame navigation finished; the app records it locally. */
   onVisited(entry: { url: string; title: string }): void;
   onViewsChanged(): void;
   onToast(message: string, tone?: 'info' | 'error'): void;
+  /** Web page context menu request. */
+  onContextMenu(payload: PageContextPayload): void;
+  /** Browser accelerator pressed while a page (not the shell) had focus. */
+  onAccelerator(input: AcceleratorInput): void;
 }
 
 const DISCARD_AFTER_MS = 10 * 60 * 1000;
 
 export class TabManager {
   list: TabList = { ...EMPTY_TABS, tabs: [] };
+
+  /** Set by the app: per-site zoom lookup (falls back to the global factor). */
+  siteZoom: (url: string) => number = () => this.zoomFactor;
 
   private views = new Map<string, WebContentsView>();
   private session: Electron.Session;
@@ -65,6 +72,25 @@ export class TabManager {
     return view && !view.webContents.isDestroyed() ? view : null;
   }
 
+  /** WebContents for a tab, or null for internal/board/discarded tabs. */
+  webContentsOf(id: string | null | undefined): WebContents | null {
+    if (!id) return null;
+    return this.view(id)?.webContents ?? null;
+  }
+
+  activeWebContents(): WebContents | null {
+    return this.webContentsOf(this.list.activeId);
+  }
+
+  /** Applies per-site zoom without a navigation (used after settings change). */
+  applySiteZoom(): void {
+    for (const tab of this.list.tabs) {
+      if (tab.kind !== 'web') continue;
+      const wc = this.webContentsOf(tab.id);
+      if (wc) wc.setZoomFactor(this.siteZoom(tab.url));
+    }
+  }
+
   /** Views of web tabs (the router walks these). */
   webTabs(): { tab: WebTab; view: WebContentsView | null }[] {
     return this.list.tabs
@@ -77,8 +103,8 @@ export class TabManager {
    * ------------------------------------------------------------------ */
 
   restore(initial: TabList): void {
-    this.list = { ...initial, tabs: initial.tabs.filter((t) => t.kind !== 'web' || !isInternalPage(t.url)) };
-    if (!this.list.tabs.length) this.create({ url: 'juzt://newtab', activate: true });
+    this.list = { ...initial, tabs: initial.tabs.filter((t) => t.kind === 'web' || t.kind === 'whiteboard') };
+    if (!this.list.tabs.length) this.create({ url: 'stage://newtab', activate: true });
     const active = this.get(this.list.activeId) ?? this.list.tabs[0];
     if (active) this.activate(active.id);
   }
@@ -96,11 +122,11 @@ export class TabManager {
         pinned: opts.pinned ?? false,
       };
     } else {
-      const url = opts.url && opts.url.length ? opts.url : 'juzt://newtab';
+      const url = opts.url && opts.url.length ? opts.url : 'stage://newtab';
       tab = {
         id,
         kind: 'web',
-        title: isInternalPage(url) ? 'New Tab' : hostOf(url) || url,
+        title: isInternalPage(url) ? internalTitle(url) : hostOf(url) || url,
         url,
         loading: false,
         canGoBack: false,
@@ -125,7 +151,13 @@ export class TabManager {
     this.list = closeInList(this.list, id);
     this.destroyView(id);
     this.events.onChanged([tab], true);
-    if (wasActive) this.ensureLoaded(this.list.activeId);
+    if (!this.list.tabs.length) {
+      // The rail always has one page in it; closing the last tab starts a
+      // fresh new-tab page instead of leaving an empty shell.
+      this.create({ url: 'stage://newtab', activate: true });
+    } else if (wasActive) {
+      this.ensureLoaded(this.list.activeId);
+    }
   }
 
   closeOthers(id: string): void {
@@ -257,7 +289,7 @@ export class TabManager {
       return false;
     }
     if (isInternalPage(url)) {
-      // Internal pages are rendered by the PREP UI: never load them in a view.
+      // Internal pages are rendered by the shell DOM: never load them in a view.
       this.destroyView(id);
       this.patch(id, { url, title: internalTitle(url), loading: false, canGoBack: false, canGoForward: false, error: undefined });
       return true;
@@ -291,7 +323,7 @@ export class TabManager {
     this.view(id)?.webContents.stop();
   }
 
-  /** Called when the presented tab is duplicated/opened in the audience window. */
+  /** Called when a tab is duplicated. */
   urlOf(id: string): string | null {
     const tab = this.get(id);
     return tab && tab.kind === 'web' ? tab.url : null;
@@ -336,7 +368,33 @@ export class TabManager {
     view.setBackgroundColor('#ffffff');
     this.views.set(id, view);
     const wc = view.webContents;
-    wc.setZoomFactor(this.zoomFactor);
+    wc.setZoomFactor(this.siteZoom(tab.url));
+    wc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return;
+      if (!isBrowserShortcut(input)) return;
+      event.preventDefault();
+      this.events.onAccelerator({
+        key: input.key,
+        control: input.control,
+        shift: input.shift,
+        alt: input.alt,
+        meta: input.meta,
+      });
+    });
+    wc.on('context-menu', (_event, params: ContextMenuParams) => {
+      this.events.onContextMenu({
+        tabId: id,
+        x: Math.max(0, Math.round(params.x)),
+        y: Math.max(0, Math.round(params.y)),
+        linkURL: params.linkURL ? params.linkURL.slice(0, 4096) : undefined,
+        linkText: params.linkText ? params.linkText.slice(0, 500) : undefined,
+        srcURL: params.srcURL ? params.srcURL.slice(0, 4096) : undefined,
+        selectionText: params.selectionText ? params.selectionText.slice(0, 2000) : undefined,
+        isEditable: !!params.isEditable,
+        mediaType: params.mediaType,
+        pageURL: (params.pageURL || wc.getURL()).slice(0, 4096),
+      });
+    });
     wc.setWindowOpenHandler(({ url }) => {
       const target = resolveInput(url, { search: false });
       if (target && !isInternalPage(target)) this.create({ url: target, background: true });
@@ -354,6 +412,7 @@ export class TabManager {
     wc.on('did-start-loading', () => this.patch(id, { loading: true, error: undefined }));
     wc.on('did-stop-loading', () => this.patch(id, { loading: false }));
     wc.on('did-navigate', (_e, url, statusCode) => {
+      wc.setZoomFactor(this.siteZoom(url));
       this.patch(id, {
         url,
         title: wc.getTitle() || hostOf(url) || url,
@@ -392,8 +451,7 @@ export class TabManager {
   private onLoadFailed(id: string, message: string, url?: string): void {
     const tab = this.get(id);
     if (!tab || tab.kind !== 'web') return;
-    // Never let a dead address sit in the "presented" position by accident: the
-    // audience keeps the last valid frame and PREP shows a retry affordance.
+    // Keep the last valid frame and let the shell show a retry affordance.
     this.patch(id, { loading: false, error: message, url: url && url.startsWith('http') ? url : tab.url });
   }
 
@@ -409,6 +467,13 @@ export class TabManager {
       }
       this.events.onViewsChanged();
     }
+  }
+
+  renameTab(id: string, title: string): void {
+    if (!this.get(id)) return;
+    this.list = updateTab(this.list, id, { title } as Partial<TabState>);
+    const tab = this.get(id);
+    if (tab) this.events.onChanged([tab], false);
   }
 
   private patch(id: string, patch: Partial<WebTab>): void {
@@ -479,21 +544,37 @@ export function titleOf(tab: TabState): string {
 }
 
 function internalTitle(url: string): string {
-  const page = url.replace('juzt://', '');
+  const page = url.replace('stage://', '').split(/[/?#]/)[0];
   switch (page) {
     case 'favorites':
       return 'Favorites';
     case 'history':
       return 'History';
-    case 'boards':
-      return 'Whiteboards';
     case 'settings':
       return 'Settings';
+    case 'reader':
+      return 'Reader';
     case 'about':
-      return 'About Juzt';
+      return 'About Stage Browser';
     default:
       return 'New Tab';
   }
 }
 
 export { insertIndexFor, EMPTY_TABS };
+
+/**
+ * Accelerators the shell owns even while a website has keyboard focus.
+ *
+ * Deliberately a small allow-list: Ctrl+C/V/A/Z and friends stay with the page.
+ */
+function isBrowserShortcut(input: { key: string; control: boolean; meta: boolean; shift: boolean; alt: boolean }): boolean {
+  const key = input.key.toLowerCase();
+  if (input.alt && (key === 'arrowleft' || key === 'arrowright')) return true;
+  const mod = input.control || input.meta;
+  if (!mod) return key === 'f5';
+  if (/^[1-9]$/.test(key)) return true;
+  if (key === 'tab' || key === '=' || key === '+' || key === '-' || key === '_' || key === '0') return true;
+  if (['t', 'w', 'f', 'd', 'j', 'h', 'r', 'p', 'l', 'k'].includes(key)) return true;
+  return input.shift && ['s', 'a', 'e', 'd', 't'].includes(key);
+}

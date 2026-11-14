@@ -22,7 +22,7 @@
 
 ---
 <div align="center">
-<img width="1366" height="768" alt="image" src="https://private-user-images.githubusercontent.com/230327046/670425086-09af4782-061a-4233-a9f0-f86144969fef.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3OTE2NDQzMjgsIm5iZiI6MTc5MTY0NDAyOCwicGF0aCI6Ii8yMzAzMjcwNDYvNjcwNDI1MDg2LTA5YWY0NzgyLTA2MWEtNDIzMy1hOWYwLWY4NjE0NDk2OWZlZi5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYxMDEwJTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MTAxMFQxNDUzNDhaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT0zOTMwNjYwZTI1MzU2ZGE5OGRjOTcyOGJlYzMzYzc2MTZkMDcyMjI5ZGJhMTU2N2FhN2U1ZGE2MjFkY2VmMTFiJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZwbmcifQ.Rg87D2EtBzFyncvhHzAV0dElE8HlnKB7ye9LAeF4mpA" />
+<img src="./docs/stage-browser.png" alt="Stage Browser with a vertical tab rail" />
 </div>
 
 ## 🌱 About Stage Browser
@@ -38,6 +38,18 @@ Stage takes a different approach.
 Instead of adding unnecessary complexity, Stage focuses on creating a clean, comfortable browsing environment where students can concentrate on their lessons, research, and educational resources.
 
 Whether you're reading documentation, attending online classes, or exploring a new subject, Stage aims to provide a simple space for meaningful learning.
+
+---
+
+## 🧭 Inside this build
+
+- **One quiet page.** Stage opens with a single tab. The vertical rail keeps pages in view, and new tabs are added from Settings. Optional session restore brings back the last set when you want it.
+- **Reader mode.** Strip an article down to structured text, adjust the type size, and save it as a PDF.
+- **Reading list.** Queue articles, track a rough reading time, mark items done, and keep a note.
+- **Find in page.** Inline find bar with match count, next/previous, and case sensitivity.
+- **Study surfaces.** Downloads, extensions, per-site zoom, screenshots, and a custom page menu live in the same window.
+- **Ink and Paper.** A dark, low-light theme and a warm paper theme, applied consistently to the reader and overlays.
+- **Local-first.** Favorites, history, reading data, and settings stay in the app's local profile.
 
 ---
 

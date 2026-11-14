@@ -1,235 +1,288 @@
 import React from 'react';
-import { matchCommands, type CommandMatch } from '../../shared/commands';
+import { searchTabs, scoreText } from '../../shared/study';
 import { hostOf } from '../../shared/url';
+import type { HistoryEntry, TabState } from '../../shared/types';
+import { tabLabel } from '../../shared/types';
 import { actions } from '../state/actions';
-import { sel, store, useSel } from '../state/store';
+import { useSel } from '../state/store';
 import { Icon } from './Icons';
 
-/**
- * The Ctrl+L palette.
- *
- * One input, no permanent help text, no URL disclosure. Results are pages from
- * history, saved sites, then an inline "go" row; `>` switches to commands with
- * argument completion. `query` starts empty on purpose — main never hands the
- * renderer the current URL for prefill.
- */
+type Row =
+  | { kind: 'tab'; id: string; label: string; sub?: string; tab: TabState }
+  | { kind: 'history'; id: string; label: string; sub: string; entry: HistoryEntry }
+  | { kind: 'command'; id: string; label: string; sub?: string; icon: React.ReactNode; shortcut?: string; run: () => void };
 
-interface Row {
-  key: string;
-  kind: 'go' | 'history' | 'fav' | 'command' | 'board';
-  label: string;
-  sub?: string;
-  favicon?: string;
-  positions?: number[];
-  run: () => void;
-}
+const commands = (): Row[] => [
+  {
+    kind: 'command',
+    id: 'new-tab',
+    label: 'New tab',
+    shortcut: 'Ctrl T',
+    icon: <Icon.plus size={16} />,
+    run: () => void actions.newTab(),
+  },
+  {
+    kind: 'command',
+    id: 'reader',
+    label: 'Open reader view',
+    sub: 'Strip the page to its article',
+    shortcut: 'Ctrl Alt R',
+    icon: <Icon.reader size={16} />,
+    run: () => void actions.openReader(),
+  },
+  {
+    kind: 'command',
+    id: 'find',
+    label: 'Find in page',
+    shortcut: 'Ctrl F',
+    icon: <Icon.search size={16} />,
+    run: () => actions.openFind(),
+  },
+  {
+    kind: 'command',
+    id: 'reading',
+    label: 'Reading list',
+    shortcut: 'Ctrl Shift D',
+    icon: <Icon.book size={16} />,
+    run: () => actions.openStudyPanel('reading'),
+  },
+  {
+    kind: 'command',
+    id: 'downloads',
+    label: 'Downloads',
+    shortcut: 'Ctrl J',
+    icon: <Icon.download size={16} />,
+    run: () => actions.openStudyPanel('downloads'),
+  },
+  {
+    kind: 'command',
+    id: 'extensions',
+    label: 'Extensions',
+    shortcut: 'Ctrl Shift E',
+    icon: <Icon.puzzle size={16} />,
+    run: () => actions.openStudyPanel('extensions'),
+  },
+  {
+    kind: 'command',
+    id: 'favorites',
+    label: 'Favorites',
+    sub: 'Open the saved pages library',
+    icon: <Icon.star size={16} />,
+    run: () => actions.openInternal('favorites'),
+  },
+  {
+    kind: 'command',
+    id: 'history',
+    label: 'History',
+    shortcut: 'Ctrl H',
+    icon: <Icon.history size={16} />,
+    run: () => actions.openInternal('history'),
+  },
+  {
+    kind: 'command',
+    id: 'pdf',
+    label: 'Save page as PDF',
+    shortcut: 'Ctrl P',
+    icon: <Icon.print size={16} />,
+    run: () => void actions.printPdf(),
+  },
+  {
+    kind: 'command',
+    id: 'shot',
+    label: 'Capture screenshot',
+    shortcut: 'Ctrl Shift S',
+    icon: <Icon.shot size={16} />,
+    run: () => void actions.screenshot(true),
+  },
+  {
+    kind: 'command',
+    id: 'theme',
+    label: 'Toggle light / dark',
+    icon: <Icon.moon size={16} />,
+    run: () => actions.toggleTheme(),
+  },
+  {
+    kind: 'command',
+    id: 'settings',
+    label: 'Settings',
+    icon: <Icon.settings size={16} />,
+    run: () => actions.openSettings(),
+  },
+  {
+    kind: 'command',
+    id: 'about',
+    label: 'About Stage Browser',
+    icon: <Icon.home size={16} />,
+    run: () => actions.openInternal('about'),
+  },
+];
 
-export const Palette: React.FC = () => {
+export const CommandPalette: React.FC = () => {
   const open = useSel((s) => s.paletteOpen);
+  const tabs = useSel((s) => s.tabs);
+  const history = useSel((s) => s.history);
+  const activeId = useSel((s) => s.activeTabId);
   const [query, setQuery] = React.useState('');
-  const [index, setIndex] = React.useState(0);
-  const [closing, setClosing] = React.useState(false);
+  const [cursor, setCursor] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const history = useSel(sel.historyPreview, (a, b) => JSON.stringify(a) === JSON.stringify(b));
-  const favorites = useSel(sel.favorites, (a, b) => JSON.stringify(a) === JSON.stringify(b));
-  const tabs = useSel(sel.tabTitles, (a, b) => JSON.stringify(a) === JSON.stringify(b));
-
-  const commandMode = query.startsWith('>');
+  const listRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!open) return;
     setQuery('');
-    setIndex(0);
-    setClosing(false);
-    const t = window.setTimeout(() => inputRef.current?.focus(), 40);
-    return () => window.clearTimeout(t);
+    setCursor(0);
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 20);
+    return () => window.clearTimeout(timer);
   }, [open]);
-
-  const close = React.useCallback((commit?: () => void) => {
-    setClosing(true);
-    window.setTimeout(() => {
-      commit?.();
-      store.set({ paletteOpen: false });
-    }, 120);
-  }, []);
 
   const rows = React.useMemo<Row[]>(() => {
     const q = query.trim();
-    if (commandMode) {
-      const parts = q.slice(1).trim().split(/\s+/);
-      const matches = matchCommands(parts[0] ?? '', 8);
-      const args = parts.slice(1).join(' ');
-      return matches.map((m: CommandMatch) => ({
-        key: `cmd:${m.name}`,
-        kind: 'command' as const,
-        label: `>${m.name}`,
-        sub: m.hint,
-        positions: m.positions,
-        run: () => void actions.runCommand(m.name, args),
-      }));
-    }
+    const tabRows: Row[] = searchTabs(tabs, q, q ? 5 : 6).map((hit) => {
+      const tab = tabs.find((t) => t.id === hit.id) as TabState;
+      return {
+        kind: 'tab',
+        id: hit.id,
+        label: hit.label,
+        sub: hit.url ? hostOf(hit.url) : 'Internal page',
+        tab,
+      };
+    });
 
-    const out: Row[] = [];
-    const needle = q.toLowerCase();
-    // A pasted or typed URL/domain always wins the first row.
-    if (q && !/\s/.test(q)) {
-      out.push({
-        key: 'go',
-        kind: 'go',
-        label: q,
-        sub: looksLikeAddress(q) ? 'Open in a new tab' : 'Search or open',
-        run: () => void actions.openFromPalette(q),
-      });
-    } else if (!q) {
-      out.push({ key: 'go-empty', kind: 'go', label: 'Search or enter address', run: () => undefined });
-    }
+    const cmdRows: Row[] = commands().filter((row) => {
+      if (!q) return true;
+      return !!scoreText(row.label, q) || !!scoreText(row.sub ?? '', q);
+    });
 
-    const scoreRow = (label: string, sub: string | undefined, needleText: string): number => {
-      if (!needle) return 1;
-      const l = label.toLowerCase();
-      if (l.includes(needle)) return l.startsWith(needle) ? 3 : 2;
-      return needleText.includes(needle) ? 1 : 0;
-    };
+    const histRows: Row[] = q
+      ? history
+          .filter((entry) => scoreText(entry.title, q) || scoreText(entry.url, q))
+          .slice(0, 4)
+          .map((entry) => ({ kind: 'history', id: entry.id, label: entry.title, sub: hostOf(entry.url) || entry.url, entry }))
+      : [];
 
-    for (const tab of tabs) {
-      const url = tab.url;
-      if (tab.kind === 'whiteboard' || !url || url.startsWith('juzt://')) continue;
-      const score = scoreRow(tab.label, url, url.toLowerCase());
-      if (!score) continue;
-      out.push({
-        key: `tab:${tab.id}`,
-        kind: 'board' as const,
-        label: tab.label,
-        sub: 'Open tab',
-        favicon: tab.favicon,
-        run: () => void actions.activateTab(tab.id),
-      });
-    }
-
-    for (const site of favorites) {
-      const label = site.title || hostOf(site.url);
-      const score = scoreRow(label, site.url, site.url.toLowerCase());
-      if (!score) continue;
-      out.push({
-        key: `fav:${site.url}`,
-        kind: 'fav' as const,
-        label,
-        sub: hostOf(site.url),
-        favicon: site.favicon,
-        run: () => void actions.openFromPalette(site.url),
-      });
-    }
-
-    for (const entry of history) {
-      if (favorites.some((f) => f.url === entry.url)) continue;
-      const s = scoreRow(entry.title || hostOf(entry.url), entry.url, entry.url.toLowerCase());
-      if (!s) continue;
-      out.push({
-        key: `hist:${entry.url}:${entry.visitedAt}`,
-        kind: 'history',
-        label: entry.title || hostOf(entry.url),
-        sub: hostOf(entry.url),
-        run: () => void actions.openFromPalette(entry.url),
-      });
-    }
-
-    return out.slice(0, 9);
-  }, [query, commandMode, history, favorites, tabs]);
+    return [...tabRows, ...cmdRows.slice(0, q ? 6 : 12), ...histRows];
+  }, [query, tabs, history]);
 
   React.useEffect(() => {
-    setIndex((i) => Math.max(0, Math.min(i, rows.length - 1)));
+    setCursor((c) => Math.min(c, Math.max(0, rows.length - 1)));
   }, [rows.length]);
+
+  React.useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${cursor}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [cursor]);
 
   if (!open) return null;
 
-  const commit = (row?: Row) => {
-    const chosen = row ?? rows[index];
-    if (!chosen) {
-      if (query.trim()) close(() => void actions.openFromPalette(query.trim()));
-      else close();
+  const run = (row: Row) => {
+    if (row.kind === 'tab') {
+      actions.activateTab(row.id);
+      actions.closePalette();
       return;
     }
-    close(chosen.run);
+    if (row.kind === 'history') {
+      actions.navigate(row.entry.url);
+      actions.closePalette();
+      return;
+    }
+    actions.closePalette();
+    row.run();
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-      e.preventDefault();
-      setIndex((i) => (rows.length ? (i + 1) % rows.length : 0));
-    } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-      e.preventDefault();
-      setIndex((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      commit();
-    } else if (e.key === 'Backspace' && query === '>') {
-      e.preventDefault();
-      setQuery('');
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setCursor((c) => (rows.length ? (c + 1) % rows.length : 0));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setCursor((c) => (rows.length ? (c - 1 + rows.length) % rows.length : 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const row = rows[cursor];
+      if (row) run(row);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      actions.closePalette();
     }
+  };
+
+  const sectionLabel = (row: Row, index: number): string | null => {
+    const prev = rows[index - 1];
+    if (prev && prev.kind === row.kind) return null;
+    if (row.kind === 'tab') return 'Tabs';
+    if (row.kind === 'command') return 'Commands';
+    return 'History';
   };
 
   return (
-    <div className={`jz-palette ${closing ? 'is-closing' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="jz-palette__box" role="dialog" aria-label="Search or command palette">
-        <div className="jz-palette__field">
-          <span className="jz-palette__icon">{commandMode ? <Icon.menu size={18} /> : <Icon.globe size={18} />}</span>
+    <div className="st-palette-scrim" onPointerDown={() => actions.closePalette()}>
+      <div className="st-palette" onPointerDown={(event) => event.stopPropagation()} role="dialog" aria-label="Command palette">
+        <div className="st-palette__search">
+          <Icon.command size={18} />
           <input
             ref={inputRef}
-            className="jz-palette__input"
             value={query}
-            spellCheck={false}
-            autoComplete="off"
-            placeholder="Search or enter address"
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setCursor(0);
+            }}
             onKeyDown={onKeyDown}
+            placeholder="Jump to a tab, page, or command"
+            spellCheck={false}
           />
+          <kbd>Esc</kbd>
         </div>
 
-        {rows.length ? (
-          <ul className="jz-palette__list" role="listbox">
-            {rows.map((row, i) => (
-              <li key={row.key}>
+        <div className="st-palette__list" ref={listRef}>
+          {rows.length === 0 && (
+            <div className="st-palette__empty">
+              <p>No matches for “{query}”.</p>
+              <span>Try a tab title, a command, or a page you visited.</span>
+            </div>
+          )}
+          {rows.map((row, index) => {
+            const section = sectionLabel(row, index);
+            return (
+              <React.Fragment key={`${row.kind}_${row.id}`}>
+                {section && <div className="st-palette__section">{section}</div>}
                 <button
-                  className={`jz-palette__row ${i === index ? 'is-active' : ''}`}
-                  onMouseEnter={() => setIndex(i)}
-                  onClick={() => commit(row)}
+                  data-row={index}
+                  className={`st-palette__row${index === cursor ? ' is-active' : ''}`}
+                  onPointerMove={() => setCursor(index)}
+                  onClick={() => run(row)}
                 >
-                  <span className="jz-palette__row-icon">
-                    {row.kind === 'go' ? <Icon.search size={16} /> : row.kind === 'command' ? <Icon.menu size={16} /> : row.favicon ? <img src={row.favicon} alt="" width={16} height={16} /> : <Icon.clock size={16} />}
+                  <span className="st-palette__icon">
+                    {row.kind === 'tab' ? (
+                      row.tab.kind === 'web' && row.tab.favicon ? (
+                        <img src={row.tab.favicon} width={16} height={16} alt="" className="st-favicon" />
+                      ) : (
+                        <Icon.globe size={16} />
+                      )
+                    ) : row.kind === 'history' ? (
+                      <Icon.history size={16} />
+                    ) : (
+                      row.icon
+                    )}
                   </span>
-                  <span className="jz-palette__row-main">
-                    <span className="jz-palette__row-label">{highlight(row.label, row.positions)}</span>
-                    {row.sub ? <span className="jz-palette__row-sub">{row.sub}</span> : null}
+                  <span className="st-palette__text">
+                    <span className="st-palette__label">{row.label}</span>
+                    {row.sub && <span className="st-palette__sub">{row.sub}</span>}
                   </span>
-                  {row.kind === 'command' && commandMode ? <span className="jz-palette__row-tag">command</span> : null}
+                  {row.kind === 'tab' && row.id === activeId && <span className="st-palette__badge">current</span>}
+                  {row.kind === 'command' && row.shortcut && <span className="st-palette__shortcut">{row.shortcut}</span>}
+                  {row.kind === 'history' && <span className="st-palette__shortcut">open</span>}
                 </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        <div className="st-palette__foot">
+          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+          <span><kbd>Enter</kbd> run</span>
+          <span><kbd>Ctrl K</kbd> toggle</span>
+        </div>
       </div>
     </div>
   );
 };
-
-function highlight(label: string, positions?: number[]): React.ReactNode {
-  if (!positions || !positions.length) return label;
-  const set = new Set(positions);
-  return (
-    <>
-      {[...label].map((ch, i) => (
-        <span key={i} className={set.has(i) ? 'is-match' : undefined}>
-          {ch}
-        </span>
-      ))}
-    </>
-  );
-}
-
-/** Cheap check used only for the "Open in a new tab" wording. */
-function looksLikeAddress(input: string): boolean {
-  return /^(https?:\/\/|localhost|[\w-]+\.[a-z]{2,})/i.test(input.trim());
-}

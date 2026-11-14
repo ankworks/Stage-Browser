@@ -8,3 +8,5 @@ release/
 .env.*
 .vscode/
 .idea/
+
+.shots/

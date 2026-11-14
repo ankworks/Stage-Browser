@@ -2,16 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-/**
- * Two renderer entries share one bundle graph:
- *   `index.html` → PREP shell
- *   `live.html`  → LIVE audience surface *and* the transparent overlay view
- *                  (the role comes from `--juzt-role=`, so the overlay is the
- *                  same document with a different preload surface).
- *
- * The live entry is also reachable through the dev server as `live.html`, which
- * is what `windows.loadRenderer()` requests in both modes.
- */
+/** Stage Browser renderer: one entry, one window. */
 export default defineConfig({
   plugins: [react()],
   root: 'src/renderer',
@@ -28,7 +19,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: path.resolve(__dirname, 'src/renderer/index.html'),
-        live: path.resolve(__dirname, 'src/renderer/live.html'),
       },
     },
   },

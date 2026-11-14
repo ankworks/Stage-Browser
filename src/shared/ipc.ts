@@ -1,10 +1,8 @@
 /**
- * IPC channel registry.
+ * IPC channel registry for Stage Browser.
  *
- * Names are stable strings; groups are namespaced with `:` so a mistaken
- * channel is obvious in logs. Every `invoke` channel is validated in main
- * (payload shape + sender), and LIVE is additionally restricted to
- * `LIVE_ALLOWED` — it must never be able to drive tabs or read prep data.
+ * One window, one renderer role. Every invoke is validated in main; web tabs
+ * have no preload at all, so page content can never reach these channels.
  */
 
 export const CH = {
@@ -12,12 +10,12 @@ export const CH = {
   APP_STATE: 'app:state',
   APP_SET_SETTINGS: 'app:setSettings',
   APP_QUIT: 'app:quit',
-  APP_RELAUNCH: 'app:relaunch',
   WIN_MINIMIZE: 'win:minimize',
   WIN_TOGGLE_MAXIMIZE: 'win:toggleMaximize',
   WIN_CLOSE: 'win:close',
-  WIN_SET_FULLSCREEN: 'win:setFullscreen',
-  WIN_IS_FULLSCREEN: 'win:isFullscreen',
+  WIN_OBSCURE: 'win:obscure',
+  WIN_FOCUS_PAGE: 'win:focus-page',
+  WIN_NEW_WINDOW: 'win:newWindow',
 
   /* tabs */
   TAB_NEW: 'tab:new',
@@ -37,64 +35,8 @@ export const CH = {
   TAB_HARD_RELOAD: 'tab:hardReload',
   TAB_STOP: 'tab:stop',
   TAB_ZOOM: 'tab:zoom',
-  TAB_OPEN_BACKGROUND: 'tab:openBackground',
-  TAB_OPEN_FOREGROUND: 'tab:openForeground',
-  TAB_OPEN_PRIVATE: 'tab:openPrivate',
-  TAB_FOCUS_URL_FIELD: 'tab:focusUrlField',
-  UI_STATE: 'ui:state',
-  INK_CMD: 'ink:cmd',
-  INK_STATE: 'ink:state',
 
-  /* present / live */
-  LIVE_PRESENT_TAB: 'live:presentTab',
-  LIVE_PRESENT_BOARD: 'live:presentBoard',
-  LIVE_STOP: 'live:stop',
-  LIVE_SET_PRIVACY: 'live:setPrivacy',
-  LIVE_SET_FREEZE: 'live:setFreeze',
-  LIVE_SET_SPOTLIGHT: 'live:setSpotlight',
-  LIVE_SET_HOLDING: 'live:setHolding',
-  LIVE_SET_MASKS: 'live:setMasks',
-  LIVE_LASER: 'live:laser',
-  LIVE_ANNOTATION: 'live:annotation',
-  LIVE_CAMERA: 'live:camera',          // PREP: apply camera config
-  LIVE_REQUEST_STATE: 'live:requestState',
-  LIVE_INPUT: 'live:input',
-  LIVE_PREVIEW: 'live:preview',
-  LIVE_OPEN_WINDOW: 'live:openWindow',
-  LIVE_FOCUS_WINDOW: 'live:focusWindow',
-  /** Navigate the audience page while presenting (teacher typed a new address). */
-  LIVE_NAVIGATE: 'live:navigate',
-
-  /* whiteboard */
-  BOARD_LIST: 'board:list',
-  BOARD_CREATE: 'board:create',
-  BOARD_GET: 'board:get',
-  BOARD_OP: 'board:op',
-  BOARD_DELETE: 'board:delete',
-  BOARD_RENAME: 'board:rename',
-  BOARD_OPEN_PREP: 'board:openPrep',
-  BOARD_OPEN_LIVE: 'board:openLive',
-  BOARD_UNDO_HINT: 'board:undoHint',
-  BOARD_UNDO: 'board:undo',
-  BOARD_REDO: 'board:redo',
-  BOARD_IMAGE_PICK: 'board:imagePick',
-  BOARD_EXPORT_PICK: 'board:exportPick',
-
-  /* scenes */
-  SCENE_LIST: 'scene:list',
-  SCENE_SAVE: 'scene:save',
-  SCENE_DELETE: 'scene:delete',
-  SCENE_APPLY: 'scene:apply',
-
-  /* backgrounds */
-  BG_PICK: 'bg:pick',
-  BG_APPLY: 'bg:apply',
-  BG_LIBRARY_ADD: 'bg:libraryAdd',
-  BG_LIBRARY_UPDATE: 'bg:libraryUpdate',
-  BG_LIBRARY_REMOVE: 'bg:libraryRemove',
-  BG_SOLID: 'bg:solid',
-
-  /* favorites / history */
+  /* library */
   FAV_LIST: 'fav:list',
   FAV_ADD: 'fav:add',
   FAV_REMOVE: 'fav:remove',
@@ -103,75 +45,51 @@ export const CH = {
   HIST_CLEAR: 'hist:clear',
   HIST_REMOVE: 'hist:remove',
 
-  /* permissions */
-  PERM_RESPOND: 'perm:respond',
-  PERM_SOURCES: 'perm:sources',
-  PERM_PICK_SOURCE: 'perm:pickSource',
-
-  /* displays */
-  DISPLAY_LIST: 'display:list',
-  DISPLAY_SET_OUTPUT: 'display:setOutput',
-
-  /* misc */
-  DIAG_ENABLE: 'diag:enable',
-  DIAG_REPORT: 'diag:report',
-  SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+  /* shell */
   CLIPBOARD_WRITE: 'clipboard:write',
-  FILE_SAVE: 'file:save',
-  FILE_OPEN_IMAGE: 'file:openImage',
-  FILE_SAVE_IMAGE_DATA: 'file:saveImageData',
-  FILE_OPEN_MEDIA: 'file:openMedia',
+  SHELL_OPEN_EXTERNAL: 'shell:openExternal',
+
+  /* study */
+  STUDY_STATE: 'study:state',
+  STUDY_FIND: 'study:find',
+  STUDY_FIND_STEP: 'study:findStep',
+  STUDY_FIND_STOP: 'study:findStop',
+  STUDY_DOWNLOADS: 'study:downloads',
+  STUDY_DOWNLOAD_CMD: 'study:downloadCmd',
+  STUDY_DOWNLOAD_CLEAR: 'study:downloadClear',
+  STUDY_ZOOM_SET: 'study:zoomSet',
+  STUDY_ZOOM_RESET: 'study:zoomReset',
+  STUDY_PRINT_PDF: 'study:printPdf',
+  STUDY_READER: 'study:reader',
+  STUDY_READER_GET: 'study:readerGet',
+  STUDY_READING_LIST: 'study:readingList',
+  STUDY_READING_ADD: 'study:readingAdd',
+  STUDY_READING_CMD: 'study:readingCmd',
+  STUDY_EXTENSIONS: 'study:extensions',
+  STUDY_EXTENSION_ADD: 'study:extensionAdd',
+  STUDY_EXTENSION_CMD: 'study:extensionCmd',
+  STUDY_EXTENSION_OPEN: 'study:extensionOpen',
+  STUDY_PAGE_ACTION: 'study:pageAction',
+  STUDY_SCREENSHOT: 'study:screenshot',
 } as const;
 
-/* main → renderer events */
 export const EV = {
-  STATE: 'ev:state',                 // sparse prep state patch
-  LIVE: 'ev:live',                   // public LiveState snapshot
+  STATE: 'ev:state',
   TABS: 'ev:tabs',
-  BOARD_DOC: 'ev:boardDoc',
-  BOARD_OPS: 'ev:boardOps',
-  BOARD_LIST: 'ev:boardList',
-  SCENES: 'ev:scenes',
   SETTINGS: 'ev:settings',
   FAVORITES: 'ev:favorites',
   HISTORY: 'ev:history',
-  PERM_REQUEST: 'ev:permRequest',
-  PERM_SOURCES: 'ev:permSources',
-  DIAG: 'ev:diag',
-  FOCUS_RESTORED: 'ev:focusRestored',
-  PREVIEW_FRAME: 'ev:previewFrame',
-  ZOOM: 'ev:zoom',
-  NAV_STATE: 'ev:navState',
-  PRESENT_PROGRESS: 'ev:presentProgress',
   TOAST: 'ev:toast',
-  FRAME: 'ev:frame',
-  /** Committed ink ops (overlay → LIVE). */
-  INK_OP: 'ev:inkOp',
-  /** In-progress stroke / laser: transient, coalesced, dropped without a LIVE window. */
-  INK_LIVE: 'ev:inkLive',
-  LASER: 'ev:laser',
+  STUDY: 'ev:study',
+  FIND: 'ev:find',
+  READING: 'ev:reading',
+  EXTENSIONS: 'ev:extensions',
+  PAGE_MENU: 'ev:pageMenu',
+  FOCUS_SEARCH: 'ev:focusSearch',
   GEOM: 'ev:geom',
-  TOOL: 'ev:tool',
-  INK_CMD_EV: 'ev:inkCmd',
+  SHOT: 'ev:shot',
+  ACCEL: 'ev:accel',
 } as const;
 
-/**
- * Channels the LIVE renderer is allowed to invoke. Anything else is rejected in
- * main before it reaches a handler, so a compromised LIVE page cannot touch
- * tabs, history or the filesystem.
- */
-export const LIVE_ALLOWED: ReadonlySet<string> = new Set<string>([
-  CH.APP_STATE,
-  CH.LIVE_REQUEST_STATE,
-  CH.LIVE_SET_SPOTLIGHT,
-  CH.LIVE_LASER,
-  CH.LIVE_ANNOTATION,
-  CH.LIVE_CAMERA,
-  CH.DIAG_REPORT,
-  CH.WIN_IS_FULLSCREEN,
-  CH.SHELL_OPEN_EXTERNAL,
-]);
-
-export interface StatePatch {
-  [key: string]: unknown;
-}
+export type Channel = (typeof CH)[keyof typeof CH];
+export type EventName = (typeof EV)[keyof typeof EV];
