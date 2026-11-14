@@ -1,0 +1,26 @@
+import { _electron as electron } from 'playwright-core';
+import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url); const repo=path.resolve('.');
+const profile=path.join(process.env.TEMP||repo,'stage-uicheck','profile');
+fs.rmSync(profile,{recursive:true,force:true}); fs.mkdirSync(path.join(profile,'state'),{recursive:true});
+fs.writeFileSync(path.join(profile,'state','settings.json'),JSON.stringify({firstRunDone:true,appearance:'dark',newTabBackground:'aurora'}));
+const app=await electron.launch({executablePath:require('electron'),args:['.'],cwd:repo,env:{...process.env,STAGE_USER_DATA:profile,ELECTRON_DISABLE_SECURITY_WARNINGS:'1'}});
+const win=await app.firstWindow();
+win.on('console',(m)=>{if(m.type()==='error')console.log('[console]',m.text())});
+await win.waitForTimeout(1600);
+await win.screenshot({path:path.join(repo,'.shots','10-single-aurora.png')});
+await win.evaluate(()=>document.querySelector('button[title="Settings"]').click());
+await win.waitForTimeout(500);
+await win.locator('.st-settings').evaluate((el)=>{el.scrollTop=0;});
+await win.screenshot({path:path.join(repo,'.shots','11-settings-top.png')});
+await win.locator('.st-settings__body').evaluate((el)=>{el.scrollTop=420;});
+await win.waitForTimeout(300);
+await win.screenshot({path:path.join(repo,'.shots','12-settings-bg.png')});
+// Pick ember and return to the new tab.
+await win.locator('.st-bgcard[data-bg="ember"]').click();
+await win.waitForTimeout(400);
+await win.locator('.st-settings button[title="Close"]').click();
+await win.waitForTimeout(500);
+await win.screenshot({path:path.join(repo,'.shots','13-ember.png')});
+console.log('done', await win.evaluate(()=>({bg:document.documentElement.dataset.newtab, sidebar:!!document.querySelector('.st-sidebar')})));
+await app.close();

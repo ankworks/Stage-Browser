@@ -2,8 +2,9 @@
  * Stage Browser security invariants.
  *
  * The browser shell is the only renderer with a preload bridge. Website tabs
- * run sandboxed with no preload, and the presentation/audience surface that
- * used to exist is gone — these tests make sure it does not creep back in.
+ * run sandboxed with a markup-only preload that exposes nothing to page script,
+ * and the presentation/audience surface that used to exist is gone — these
+ * tests make sure it does not creep back in.
  */
 
 import test from 'node:test';
@@ -34,13 +35,17 @@ test('the shell renderer is isolated', () => {
   assert.match(app, /sandbox:\s*false/);
 });
 
-test('website tabs get a sandbox and no preload', () => {
+test('website tabs get a sandbox and only the isolated markup preload', () => {
   const tabs = read('src/main/tabs.ts');
   assert.match(tabs, /sandbox:\s*true/);
   assert.match(tabs, /contextIsolation:\s*true/);
   assert.match(tabs, /nodeIntegration:\s*false/);
   assert.match(tabs, /webSecurity:\s*true/);
-  assert.equal(/preload:\s*path/.test(tabs), false);
+  assert.match(tabs, /preload:\s*path\.join\(__dirname,\s*'\.\.\/preload\/web\.js'\)/);
+  const pagePreload = read('src/preload/web.ts');
+  assert.equal(/contextBridge/.test(pagePreload), false);
+  assert.equal(/exposeInMainWorld/.test(pagePreload), false);
+  assert.equal(/nodeIntegration/.test(pagePreload), false);
 });
 
 test('only http(s) and internal pages can be opened from a window', () => {

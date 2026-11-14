@@ -79,6 +79,7 @@ async function boot(): Promise<void> {
     store.set({ contentRect: rect, maximized });
   });
   api.on.pageShot((pageShot) => store.set({ pageShot }));
+  api.on.ink((ink) => store.set({ ink }));
 
   const state = await api.getState();
   store.hydrate(state);

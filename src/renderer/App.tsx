@@ -16,20 +16,25 @@ import { sel, useSel } from './state/store';
  *
  *   titlebar (46)
  *   ┌──────────────┬──────────────────────────────┐
- *   │ tab rail 236 │ address (50)                 │
+ *   │ tab rail 236 │ address (50)                 │   only with 2+ tabs
  *   │              ├──────────────────────────────┤
  *   │              │ native page view             │
  *   └──────────────┴──────────────────────────────┘
  *
- * Main owns the native view bounds: x starts after the rail, y after the
- * titlebar and address bar. Overlays are DOM, so while one is open main hides
- * the native view and sends a snapshot of the page back: the scrim still sits
- * on something that looks like the page instead of a blank rectangle.
+ * One tab is the default, and a single tab has no rail: the page gets the full
+ * window. The rail appears as soon as a second tab exists. Main owns the native
+ * view bounds, so its `contentRect()` uses the exact same rule.
+ *
+ * Overlays are DOM, so while one is open main hides the native view and sends a
+ * snapshot of the page back: the scrim still sits on something that looks like
+ * the page instead of a blank rectangle.
  */
 
 const App: React.FC = () => {
   const ready = useSel((s) => s.ready);
   const appearance = useSel((s) => s.settings.appearance);
+  const background = useSel((s) => s.settings.newTabBackground);
+  const tabCount = useSel((s) => s.tabs.length);
   const active = useSel(sel.activeTab);
   const rect = useSel((s) => s.contentRect);
   const pageShot = useSel((s) => s.pageShot);
@@ -43,6 +48,10 @@ const App: React.FC = () => {
     document.documentElement.dataset.theme = appearance === 'light' ? 'light' : 'dark';
     document.documentElement.style.colorScheme = appearance === 'light' ? 'light' : 'dark';
   }, [appearance]);
+
+  React.useEffect(() => {
+    document.documentElement.dataset.newtab = background || 'ink';
+  }, [background]);
 
   React.useEffect(() => {
     void window.stage.window.obscure(overlayOpen);
@@ -66,7 +75,7 @@ const App: React.FC = () => {
     <div className="st-app" data-overlay={overlayOpen ? 'open' : 'closed'}>
       <TitleBar />
       <div className="st-shell">
-        <TabSidebar />
+        {tabCount > 1 && <TabSidebar />}
         <div className="st-main">
           <AddressBar />
 

@@ -1,0 +1,27 @@
+import { _electron as electron } from 'playwright-core';
+import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module';
+const require=createRequire(import.meta.url); const repo=path.resolve('.');
+const profile=path.join(process.env.TEMP||repo,'stage-inkqa','profile');
+fs.rmSync(profile,{recursive:true,force:true}); fs.mkdirSync(path.join(profile,'state'),{recursive:true});
+fs.writeFileSync(path.join(profile,'state','settings.json'),JSON.stringify({firstRunDone:true,appearance:'dark'}));
+const app=await electron.launch({executablePath:require('electron'),args:['.'],cwd:repo,env:{...process.env,STAGE_USER_DATA:profile,ELECTRON_DISABLE_SECURITY_WARNINGS:'1'}});
+const win=await app.firstWindow(); await win.waitForTimeout(1500);
+await win.keyboard.press('Control+L'); await win.keyboard.type('https://example.com'); await win.keyboard.press('Enter'); await win.waitForTimeout(3500);
+await win.evaluate(()=>window.stage.ink.set(true)); await win.waitForTimeout(400);
+await app.evaluate(async ({BrowserWindow})=>{
+ const w=BrowserWindow.getAllWindows()[0]; const c=w.contentView.children.find(v=>{try{return v.webContents.getURL().includes('example')}catch{return false}});
+ c.webContents.focus();
+ c.webContents.sendInputEvent({type:'mouseMove',x:300,y:300});
+ c.webContents.sendInputEvent({type:'mouseDown',x:300,y:300,button:'left',clickCount:1});
+ for(let i=0;i<40;i++) c.webContents.sendInputEvent({type:'mouseMove',x:300+i*12,y:300+Math.sin(i/4)*60,button:'left',modifiers:['leftButtonDown']});
+ c.webContents.sendInputEvent({type:'mouseUp',x:780,y:300,button:'left',clickCount:1});
+ c.webContents.sendInputEvent({type:'mouseMove',x:250,y:450});
+ c.webContents.sendInputEvent({type:'mouseDown',x:250,y:450,button:'left',clickCount:1});
+ for(let i=0;i<35;i++) c.webContents.sendInputEvent({type:'mouseMove',x:250+i*13,y:450+i*4,button:'left',modifiers:['leftButtonDown']});
+ c.webContents.sendInputEvent({type:'mouseUp',x:705,y:590,button:'left',clickCount:1});
+});
+await win.waitForTimeout(500);
+const shot=await app.evaluate(async ({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];const c=w.contentView.children.find(v=>{try{return v.webContents.getURL().includes('example')}catch{return false}}); const img=await c.webContents.capturePage(); return img.toPNG().toString('base64');});
+fs.writeFileSync(path.join(repo,'.shots','06-ink2.png'),Buffer.from(shot,'base64'));
+console.log('saved');
+await app.close();

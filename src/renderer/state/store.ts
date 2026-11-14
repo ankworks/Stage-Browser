@@ -54,6 +54,7 @@ export interface UiState {
   pageShot: string | null;
   maximized: boolean;
   addressFocus: number;
+  ink: { tabId: string | null; on: boolean };
 }
 
 const EMPTY_FIND: FindState = { open: false, query: '', matches: 0, activeMatch: 0, caseSensitive: false };
@@ -78,11 +79,13 @@ const initialState: UiState = {
   readingList: [],
   extensions: [],
   find: EMPTY_FIND,
-  // Matches main: 236px tab rail, 46px titlebar + 50px address bar.
-  contentRect: { x: 236, y: 96, width: 1084, height: 704 },
+  // Single-tab mode has no rail, so the page starts at x=0. Main sends the
+  // real rect as soon as the second tab appears.
+  contentRect: { x: 0, y: 96, width: 1320, height: 704 },
   pageShot: null,
   maximized: false,
   addressFocus: 0,
+  ink: { tabId: null, on: false },
 };
 
 class Store {

@@ -69,6 +69,11 @@ export interface StageApi {
     setZoom: (id: string, factor: number) => void;
   };
 
+  ink: {
+    set: (on: boolean) => Promise<boolean>;
+    get: () => Promise<boolean>;
+  };
+
   favorites: {
     list: () => Promise<Favorite[]>;
     add: (payload: { url: string; title?: string; favicon?: string }) => Promise<Favorite[]>;
@@ -130,6 +135,7 @@ export interface StageApi {
     geom: (cb: (payload: { rect: Rect; maximized: boolean }) => void) => Unsubscribe;
     pageShot: (cb: (dataUrl: string | null) => void) => Unsubscribe;
     accel: (cb: (input: AcceleratorInput) => void) => Unsubscribe;
+    ink: (cb: (payload: { tabId: string | null; on: boolean }) => void) => Unsubscribe;
   };
 }
 
@@ -166,6 +172,11 @@ const api: StageApi = {
     hardReload: (id) => void invoke<void>(CH.TAB_HARD_RELOAD, id),
     stop: (id) => void invoke<void>(CH.TAB_STOP, id),
     setZoom: (id, factor) => void invoke<void>(CH.TAB_ZOOM, id, factor),
+  },
+
+  ink: {
+    set: (on) => invoke<boolean>(CH.INK_SET, on),
+    get: () => invoke<boolean>(CH.INK_GET),
   },
 
   favorites: {
@@ -221,6 +232,7 @@ const api: StageApi = {
     geom: (cb) => on(EV.GEOM, cb),
     pageShot: (cb) => on<string | null>(EV.SHOT, cb),
     accel: (cb) => on<AcceleratorInput>(EV.ACCEL, cb),
+    ink: (cb) => on<{ tabId: string | null; on: boolean }>(EV.INK, cb),
   },
 };
 

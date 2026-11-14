@@ -648,6 +648,17 @@ export interface StudyState {
   find: FindState;
 }
 
+export type NewTabBackgroundId = 'ink' | 'aurora' | 'ember' | 'forest' | 'slate' | 'sand';
+
+export const NEW_TAB_BACKGROUNDS: { id: NewTabBackgroundId; label: string; note: string }[] = [
+  { id: 'ink', label: 'Ink', note: 'Deep blue, quiet' },
+  { id: 'aurora', label: 'Aurora', note: 'Teal and violet' },
+  { id: 'ember', label: 'Ember', note: 'Warm night light' },
+  { id: 'forest', label: 'Forest', note: 'Moss and pine' },
+  { id: 'slate', label: 'Slate', note: 'Neutral graphite' },
+  { id: 'sand', label: 'Sand', note: 'Warm paper' },
+];
+
 export interface Settings {
   schemaVersion: number;
   presentationMode: PresentationMode;
@@ -692,6 +703,8 @@ export interface Settings {
 
   /** Study surfaces: appearance, per-site zoom, tab rail, reader typography. */
   appearance: 'dark' | 'light';
+  /** New-tab backdrop. Kept separate from the UI theme so paper stays readable. */
+  newTabBackground: NewTabBackgroundId;
   verticalTabs: boolean;
   /** Start with the previous tabs instead of one fresh tab. Off by default. */
   restoreSession: boolean;
@@ -744,6 +757,7 @@ export const DEFAULT_SETTINGS: Settings = {
   firstRunDone: false,
 
   appearance: 'dark',
+  newTabBackground: 'ink',
   verticalTabs: false,
   restoreSession: false,
   siteZoom: {},

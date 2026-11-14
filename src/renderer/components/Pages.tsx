@@ -53,12 +53,6 @@ const NewTabPage: React.FC = () => {
   const history = useSel((s) => s.history);
   const reading = useSel((s) => s.readingList);
   const [query, setQuery] = React.useState('');
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 90);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const queue = reading.filter((r) => !r.doneAt).slice(0, 3);
   const recent = history.slice(0, 6);
@@ -84,7 +78,6 @@ const NewTabPage: React.FC = () => {
         >
           <Icon.search size={19} />
           <input
-            ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search the web or type an address"

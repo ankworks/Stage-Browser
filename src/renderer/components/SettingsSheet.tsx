@@ -1,5 +1,5 @@
 import React from 'react';
-import { tabLabel } from '../../shared/types';
+import { NEW_TAB_BACKGROUNDS, tabLabel } from '../../shared/types';
 import { actions } from '../state/actions';
 import { useSel } from '../state/store';
 import { Icon } from './Icons';
@@ -49,7 +49,13 @@ const TabsSection: React.FC = () => {
   const restoreSession = useSel((s) => s.settings.restoreSession);
 
   return (
-    <Section title="Tabs" hint="The rail on the left holds every page. Start with one; add another here.">
+    <Section title="Tabs" hint="One tab by default. The left rail appears only when you add a second one.">
+      {tabs.length === 1 && (
+        <div className="st-hintcard">
+          <Icon.tabs size={16} />
+          <span>Single-tab mode — the page uses the full window. Add a tab to show the rail.</span>
+        </div>
+      )}
       <div className="st-tabsettings">
         {tabs.map((tab) => (
           <div key={tab.id} className={`st-tabsetting${tab.id === activeId ? ' is-active' : ''}`}>
@@ -120,6 +126,7 @@ const TabsSection: React.FC = () => {
 
 const AppearanceSection: React.FC = () => {
   const appearance = useSel((s) => s.settings.appearance);
+  const background = useSel((s) => s.settings.newTabBackground);
   return (
     <Section title="Appearance" hint="The whole browser, including the reader and overlays.">
       <div className="st-theme-cards">
@@ -140,6 +147,25 @@ const AppearanceSection: React.FC = () => {
               {mode === 'dark' ? 'Ink' : 'Paper'}
             </span>
             <span className="st-theme-sub">{mode === 'dark' ? 'Low light, late nights' : 'Warm, print-like paper'}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="st-setting__subhead">
+        <h3>New tab background</h3>
+        <p>The backdrop behind the search page and its cards.</p>
+      </div>
+      <div className="st-bggrid">
+        {NEW_TAB_BACKGROUNDS.map((preset) => (
+          <button
+            key={preset.id}
+            className={`st-bgcard${background === preset.id ? ' is-active' : ''}`}
+            data-bg={preset.id}
+            onClick={() => actions.setNewTabBackground(preset.id)}
+            title={preset.note}
+          >
+            <span className="st-bgcard__swatch" />
+            <span className="st-bgcard__name">{preset.label}</span>
           </button>
         ))}
       </div>

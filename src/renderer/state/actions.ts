@@ -214,6 +214,10 @@ export const actions = {
     void actions.setSettings({ appearance });
   },
 
+  setNewTabBackground(newTabBackground: Settings['newTabBackground']): void {
+    void actions.setSettings({ newTabBackground });
+  },
+
   toggleTheme(): void {
     const current = store.getState().settings.appearance;
     actions.setAppearance(current === 'light' ? 'dark' : 'light');
@@ -353,6 +357,20 @@ export const actions = {
   async clearFindQuery(): Promise<void> {
     await api().study.findStop();
     store.set((s) => ({ find: { ...s.find, open: true, query: '', matches: 0, activeMatch: 0 } }));
+  },
+
+  /* ------------------------------------------------------------------ *
+   * Page markup
+   * ------------------------------------------------------------------ */
+
+  toggleInk(): void {
+    const tab = activeTab();
+    if (!tab || !isWebTab(tab) || isInternalPage(tab.url)) {
+      actions.toast('Markup works on websites');
+      return;
+    }
+    const on = store.getState().ink.tabId === tab.id && store.getState().ink.on;
+    void api().ink.set(!on);
   },
 
   /* ------------------------------------------------------------------ *

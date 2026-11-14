@@ -91,6 +91,7 @@ export const AddressBar: React.FC = () => {
   const settings = useSel((s) => s.settings);
   const favorites = useSel((s) => s.favorites);
   const find = useSel((s) => s.find);
+  const ink = useSel((s) => s.ink);
   const focusToken = useSel((s) => s.addressFocus);
   const loading = active?.kind === 'web' ? active.loading : false;
   const canBack = active?.kind === 'web' ? active.canGoBack : false;
@@ -98,6 +99,7 @@ export const AddressBar: React.FC = () => {
   const url = active?.kind === 'web' ? active.url : '';
   const internal = url.startsWith('stage://');
   const favorite = favorites.find((f) => f.url === url);
+  const inkOn = !!active && ink.tabId === active.id && ink.on;
   const secure = /^https:\/\//i.test(url);
   const [value, setValue] = React.useState(url);
   const [focused, setFocused] = React.useState(false);
@@ -234,6 +236,14 @@ export const AddressBar: React.FC = () => {
         )}
 
         <button
+          className={`st-iconbtn${inkOn ? ' is-on' : ''}`}
+          title={inkOn ? 'Finish markup (Ctrl+Shift+M)' : 'Mark up this page (Ctrl+Shift+M)'}
+          disabled={!url || internal}
+          onClick={() => actions.toggleInk()}
+        >
+          <Icon.pen size={17} />
+        </button>
+        <button
           className="st-iconbtn"
           title="Reader view (Ctrl+Alt+R)"
           disabled={!url || internal}
@@ -261,6 +271,7 @@ export const AddressBar: React.FC = () => {
             <MenuItem icon={<Icon.print size={16} />} label="Save as PDF" shortcut="Ctrl+P" onClick={() => { void actions.printPdf(); setMoreOpen(false); }} />
             <MenuItem icon={<Icon.shot size={16} />} label="Screenshot" shortcut="Ctrl+Shift+S" onClick={() => { void actions.screenshot(true); setMoreOpen(false); }} />
             <MenuItem icon={<Icon.book size={16} />} label="Add to reading list" onClick={() => { void actions.addReading(); setMoreOpen(false); }} />
+            <MenuItem icon={<Icon.pen size={16} />} label={inkOn ? 'Finish markup' : 'Mark up this page'} shortcut="Ctrl Shift M" onClick={() => { actions.toggleInk(); setMoreOpen(false); }} />
             <div className="st-menu__sep" />
             <MenuItem icon={<Icon.star size={16} />} label="Favorites" onClick={() => { actions.openInternal('favorites'); setMoreOpen(false); }} />
             <MenuItem icon={<Icon.history size={16} />} label="History" shortcut="Ctrl+H" onClick={() => { actions.openInternal('history'); setMoreOpen(false); }} />

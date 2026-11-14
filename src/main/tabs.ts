@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { WebContentsView, type ContextMenuParams, type WebContents } from 'electron';
 import { EMPTY_TABS, activate, activateIndex, activateNumber, closeOthers, closeTab as closeInList, closeToRight, cycle, insertIndexFor, openTab, reopen as reopenInList, reorder as reorderInList, setPinned, updateTab, type TabList } from '../shared/tabs';
 import { tabLabel, type AcceleratorInput, type PageContextPayload, type TabState, type WebTab, type WbView } from '../shared/types';
@@ -27,6 +28,10 @@ export interface TabEvents {
   onContextMenu(payload: PageContextPayload): void;
   /** Browser accelerator pressed while a page (not the shell) had focus. */
   onAccelerator(input: AcceleratorInput): void;
+  /** A main-frame navigation invalidated the page markup layer. */
+  onInkReset(tabId: string): void;
+  /** Main's markup state, replayed after a page finishes loading. */
+  isInk(tabId: string): boolean;
 }
 
 const DISCARD_AFTER_MS = 10 * 60 * 1000;
@@ -80,6 +85,14 @@ export class TabManager {
 
   activeWebContents(): WebContents | null {
     return this.webContentsOf(this.list.activeId);
+  }
+
+  /** Resolve an IPC sender back to its tab (used by the page markup layer). */
+  tabIdForWebContents(wc: WebContents): string | null {
+    for (const [id, view] of this.views) {
+      if (view.webContents === wc) return id;
+    }
+    return null;
   }
 
   /** Applies per-site zoom without a navigation (used after settings change). */
@@ -294,7 +307,10 @@ export class TabManager {
       this.patch(id, { url, title: internalTitle(url), loading: false, canGoBack: false, canGoForward: false, error: undefined });
       return true;
     }
-    const view = this.ensureView(id);
+    // The tab may still be on an internal page (stage://newtab), in which case
+    // it has no native view yet. Pass the target URL so `ensureView` does not
+    // reject the tab based on its old, internal URL.
+    const view = this.ensureView(id, url);
     if (!view) return false;
     this.patch(id, { url, loading: true, error: undefined });
     void view.webContents.loadURL(url).catch(() => this.onLoadFailed(id, 'Navigation failed'));
@@ -345,11 +361,12 @@ export class TabManager {
     void wc.loadURL(tab.url).catch(() => this.onLoadFailed(id, 'The page could not be loaded'));
   }
 
-  private ensureView(id: string): WebContentsView | null {
+  private ensureView(id: string, targetUrl?: string): WebContentsView | null {
     const existing = this.view(id);
     if (existing) return existing;
     const tab = this.get(id);
-    if (!tab || tab.kind !== 'web' || isInternalPage(tab.url)) return null;
+    const url = targetUrl ?? (tab && tab.kind === 'web' ? tab.url : '');
+    if (!tab || tab.kind !== 'web' || isInternalPage(url)) return null;
 
     const view = new WebContentsView({
       webPreferences: {
@@ -360,7 +377,9 @@ export class TabManager {
         webSecurity: true,
         // Only the visible tab needs full-rate rendering; the router hides the rest.
         backgroundThrottling: true,
-        preload: undefined,
+        // The page preload adds the isolated markup layer. It exposes no bridge
+        // to the website and only listens for main's `stage:ink` messages.
+        preload: path.join(__dirname, '../preload/web.js'),
         safeDialogs: true,
         disableDialogs: false,
       },
@@ -368,7 +387,7 @@ export class TabManager {
     view.setBackgroundColor('#ffffff');
     this.views.set(id, view);
     const wc = view.webContents;
-    wc.setZoomFactor(this.siteZoom(tab.url));
+    wc.setZoomFactor(this.siteZoom(url));
     wc.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return;
       if (!isBrowserShortcut(input)) return;
@@ -420,7 +439,14 @@ export class TabManager {
         canGoForward: wc.canGoForward(),
         error: statusCode >= 400 ? `HTTP ${statusCode}` : undefined,
       });
+      // The old document (and its canvas) is gone. Start the next page clean.
+      this.events.onInkReset(id);
       this.recordVisit(url, wc.getTitle());
+    });
+    wc.on('did-finish-load', () => {
+      // If markup was requested while the page was still loading, the preload
+      // is ready now, so replay the current mode.
+      if (this.events.isInk(id)) wc.send('stage:ink', { on: true });
     });
     wc.on('did-navigate-in-page', (_e, url, isMain) => {
       if (!isMain) return;
@@ -576,5 +602,5 @@ function isBrowserShortcut(input: { key: string; control: boolean; meta: boolean
   if (/^[1-9]$/.test(key)) return true;
   if (key === 'tab' || key === '=' || key === '+' || key === '-' || key === '_' || key === '0') return true;
   if (['t', 'w', 'f', 'd', 'j', 'h', 'r', 'p', 'l', 'k'].includes(key)) return true;
-  return input.shift && ['s', 'a', 'e', 'd', 't'].includes(key);
+  return input.shift && ['s', 'a', 'e', 'd', 't', 'm'].includes(key);
 }

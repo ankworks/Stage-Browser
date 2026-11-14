@@ -35,6 +35,8 @@ export const CH = {
   TAB_HARD_RELOAD: 'tab:hardReload',
   TAB_STOP: 'tab:stop',
   TAB_ZOOM: 'tab:zoom',
+  INK_SET: 'ink:set',
+  INK_GET: 'ink:get',
 
   /* library */
   FAV_LIST: 'fav:list',
@@ -89,6 +91,7 @@ export const EV = {
   GEOM: 'ev:geom',
   SHOT: 'ev:shot',
   ACCEL: 'ev:accel',
+  INK: 'ev:ink',
 } as const;
 
 export type Channel = (typeof CH)[keyof typeof CH];

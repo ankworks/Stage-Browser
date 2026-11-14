@@ -19,7 +19,7 @@ import {
 import path from 'node:path';
 import { CH, EV } from '../shared/ipc';
 import type { Favorite, HistoryEntry, Settings, TabState } from '../shared/types';
-import { APP_NAME, DEFAULT_SETTINGS, SCHEMA_VERSION } from '../shared/types';
+import { APP_NAME, DEFAULT_SETTINGS, NEW_TAB_BACKGROUNDS, SCHEMA_VERSION } from '../shared/types';
 import type { TabList } from '../shared/tabs';
 import { isInternalPage } from '../shared/url';
 import type { StageBootstrap } from '../shared/stage';
@@ -52,6 +52,11 @@ export class StageApp {
   private obscured = false;
   private focusKey: string | null = null;
   private restoredBounds: WindowBounds | null = null;
+  private inkTabs = new Set<string>();
+  private inkKey: string | null = null;
+  private shownViews = new Set<string>();
+  private viewBounds = new Map<string, string>();
+  private geomKey = '';
 
   async start(): Promise<void> {
     app.setName(APP_NAME);
@@ -61,13 +66,17 @@ export class StageApp {
 
     this.tabs = new TabManager(this.appSession, {
       onChanged: (changed, structure) => {
-        void structure;
         this.send(EV.TABS, {
           order: this.tabs.tabs.map((t) => t.id),
           activeId: this.tabs.list.activeId,
           changed,
         });
-        this.routeViews();
+        // Metadata (title, favicon, loading) changes constantly while a page
+        // loads. Re-routing the native views on every one of those caused a
+        // visible white flash. Geometry only changes when tabs are added,
+        // removed or switched.
+        if (structure) this.routeViews();
+        this.syncInk();
       },
       onVisited: (entry) => this.recordVisit(entry.url, entry.title),
       onViewsChanged: () => this.routeViews(),
@@ -77,6 +86,11 @@ export class StageApp {
         this.win?.webContents.focus();
         this.send(EV.ACCEL, input);
       },
+      onInkReset: (tabId) => {
+        this.inkTabs.delete(tabId);
+        this.syncInk();
+      },
+      isInk: (tabId) => this.inkTabs.has(tabId),
     });
 
     this.study = new StudyService({
@@ -97,6 +111,7 @@ export class StageApp {
     this.study.attach();
 
     this.registerIpc();
+    this.registerPageIpc();
     this.wireWindow();
     // One quiet tab by default. Session restore is an explicit opt-in because
     // the product starts as a single-page study space, not a tab archive.
@@ -164,8 +179,8 @@ export class StageApp {
 
     this.win.once('ready-to-show', () => this.win?.show());
     this.win.on('resize', () => this.routeViews());
-    this.win.on('maximize', () => this.send(EV.GEOM, { rect: this.contentRect(), maximized: true }));
-    this.win.on('unmaximize', () => this.send(EV.GEOM, { rect: this.contentRect(), maximized: false }));
+    this.win.on('maximize', () => this.routeViews());
+    this.win.on('unmaximize', () => this.routeViews());
     this.win.on('closed', () => {
       this.win = null;
     });
@@ -189,12 +204,19 @@ export class StageApp {
     setTimeout(() => this.send(EV.GEOM, { rect: this.contentRect(), maximized: !!this.win?.isMaximized() }), 250);
   }
 
+  private sidebarVisible(): boolean {
+    return (this.tabs?.tabs.length ?? 0) > 1;
+  }
+
   private contentRect() {
     const [width, height] = this.win?.getContentSize() ?? [1280, 800];
+    // One tab = full width. The rail only exists once there is something to
+    // switch between, and main keeps this rule in lockstep with the renderer.
+    const rail = this.sidebarVisible() ? SIDEBAR_WIDTH : 0;
     return {
-      x: SIDEBAR_WIDTH,
+      x: rail,
       y: CHROME_TOP,
-      width: Math.max(200, width - SIDEBAR_WIDTH),
+      width: Math.max(200, width - rail),
       height: Math.max(150, height - CHROME_TOP),
     };
   }
@@ -205,12 +227,28 @@ export class StageApp {
     if (!win || win.isDestroyed()) return;
     const active = this.tabs?.active();
     const rect = this.contentRect();
+    const rectKey = `${rect.x}:${rect.y}:${rect.width}:${rect.height}`;
+
     for (const { tab, view } of this.tabs.webTabs()) {
       if (!view) continue;
-      if (!win.contentView.children.includes(view)) win.contentView.addChildView(view);
+      if (!win.contentView.children.includes(view)) {
+        win.contentView.addChildView(view);
+        this.shownViews.delete(tab.id);
+        this.viewBounds.delete(tab.id);
+      }
       const visible = !this.obscured && !!active && tab.id === active.id;
-      if (visible) view.setBounds(rect);
-      view.setVisible(visible);
+      if (visible && this.viewBounds.get(tab.id) !== rectKey) {
+        view.setBounds(rect);
+        this.viewBounds.set(tab.id, rectKey);
+      }
+      // `setVisible` is surprisingly expensive while a page is loading; only
+      // touch it when the state actually changes. This also removes the white
+      // flash when clicking around a website.
+      if (this.shownViews.has(tab.id) !== visible) {
+        view.setVisible(visible);
+        if (visible) this.shownViews.add(tab.id);
+        else this.shownViews.delete(tab.id);
+      }
     }
 
     // Move keyboard focus with the active surface: a website takes typing, an
@@ -224,7 +262,11 @@ export class StageApp {
       else if (active) this.tabs.view(active.id)?.webContents.focus();
     }
 
-    this.send(EV.GEOM, { rect, maximized: win.isMaximized() });
+    const geomKey = `${rectKey}:${win.isMaximized() ? 1 : 0}`;
+    if (geomKey !== this.geomKey) {
+      this.geomKey = geomKey;
+      this.send(EV.GEOM, { rect, maximized: win.isMaximized() });
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -339,6 +381,11 @@ export class StageApp {
     this.ipc(CH.TAB_HARD_RELOAD, (id: unknown) => this.tabs.reload(String(id ?? ''), true));
     this.ipc(CH.TAB_STOP, (id: unknown) => this.tabs.stop(String(id ?? '')));
     this.ipc(CH.TAB_ZOOM, (id: unknown, factor: unknown) => this.tabs.setZoom(String(id ?? ''), Number(factor)));
+    this.ipc(CH.INK_SET, (on: unknown) => this.setInk(this.tabs.list.activeId, !!on));
+    this.ipc(CH.INK_GET, () => {
+      const id = this.tabs.list.activeId;
+      return !!id && this.inkTabs.has(id);
+    });
 
     /* favorites */
     this.ipc(CH.FAV_LIST, () => this.favorites);
@@ -428,6 +475,55 @@ export class StageApp {
     this.ipc(CH.STUDY_SCREENSHOT, (save: unknown) => this.study.screenshot(!!save));
   }
 
+  /**
+   * Page-markup IPC comes from the page preload, not the shell. A page can only
+   * close the layer that belongs to its own tab.
+   */
+  private registerPageIpc(): void {
+    ipcMain.on('stage:ink-close', (event) => {
+      const tabId = this.tabs?.tabIdForWebContents(event.sender);
+      if (!tabId) return;
+      this.inkTabs.delete(tabId);
+      this.syncInk();
+    });
+  }
+
+  private setInk(tabId: string | null, on: boolean): boolean {
+    if (!tabId) return false;
+    const tab = this.tabs.get(tabId);
+    if (!tab || tab.kind !== 'web' || isInternalPage(tab.url)) return false;
+    if (on) {
+      this.inkTabs.add(tabId);
+      this.tabs.ensureLoaded(tabId);
+    } else {
+      this.inkTabs.delete(tabId);
+    }
+    const wc = this.tabs.webContentsOf(tabId);
+    if (wc && !wc.isDestroyed()) {
+      wc.send('stage:ink', {
+        on,
+        color: this.settings.defaultPenColor,
+        size: this.settings.defaultPenSize,
+      });
+    }
+    this.syncInk();
+    return on;
+  }
+
+  private syncInk(): void {
+    for (const id of [...this.inkTabs]) {
+      const tab = this.tabs?.get(id);
+      if (!tab || tab.kind !== 'web' || isInternalPage(tab.url)) this.inkTabs.delete(id);
+    }
+    const tabId = this.tabs?.list.activeId ?? null;
+    const tab = tabId ? this.tabs.get(tabId) : null;
+    const on = !!tabId && this.inkTabs.has(tabId) && !!tab && tab.kind === 'web' && !isInternalPage(tab.url);
+    const key = `${tabId ?? ''}:${on ? '1' : '0'}`;
+    if (key === this.inkKey) return;
+    this.inkKey = key;
+    this.send(EV.INK, { tabId, on });
+  }
+
   /* ------------------------------------------------------------------ *
    * State
    * ------------------------------------------------------------------ */
@@ -510,6 +606,7 @@ function sanitizeSettings(raw: Partial<Settings>): Settings {
     ...base,
     schemaVersion: SCHEMA_VERSION,
     appearance: base.appearance === 'light' ? 'light' : 'dark',
+    newTabBackground: NEW_TAB_BACKGROUNDS.some((b) => b.id === base.newTabBackground) ? base.newTabBackground : 'ink',
     verticalTabs: !!base.verticalTabs,
     restoreSession: base.restoreSession === true,
     zoom: clampNumber(base.zoom, 0.25, 5),

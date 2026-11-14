@@ -22,7 +22,7 @@
 
 ---
 <div align="center">
-<img src="./docs/stage-browser.png" alt="Stage Browser with a vertical tab rail" />
+<img src="./docs/stage-browser.png" alt="Stage Browser new tab with an aurora background" />
 </div>
 
 ## 🌱 About Stage Browser
@@ -43,7 +43,9 @@ Whether you're reading documentation, attending online classes, or exploring a n
 
 ## 🧭 Inside this build
 
-- **One quiet page.** Stage opens with a single tab. The vertical rail keeps pages in view, and new tabs are added from Settings. Optional session restore brings back the last set when you want it.
+- **One quiet page.** Stage opens with a single tab and the page gets the full window. The vertical rail appears only when you add a second tab from Settings. Optional session restore brings back the last set when you want it.
+- **Markup tools.** Draw on any website with a pen, marker, highlighter, or eraser. Pick a colour, adjust stroke size, undo/redo, then finish with the pen button or `Esc`.
+- **New tab backgrounds.** Six calm backdrops — Ink, Aurora, Ember, Forest, Slate, and Sand — in Settings → Appearance.
 - **Reader mode.** Strip an article down to structured text, adjust the type size, and save it as a PDF.
 - **Reading list.** Queue articles, track a rough reading time, mark items done, and keep a note.
 - **Find in page.** Inline find bar with match count, next/previous, and case sensitivity.

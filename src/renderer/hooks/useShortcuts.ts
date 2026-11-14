@@ -18,6 +18,10 @@ export function useShortcuts(enabled: boolean): void {
 
       if (key === 'escape') {
         if (actions.closeAllOverlays()) event.preventDefault();
+        else if (store.getState().ink.on) {
+          event.preventDefault();
+          actions.toggleInk();
+        }
         return;
       }
 
@@ -63,6 +67,11 @@ export function useShortcuts(enabled: boolean): void {
       if (key === 'f') {
         event.preventDefault();
         actions.openFind();
+        return;
+      }
+      if (key === 'm' && event.shiftKey) {
+        event.preventDefault();
+        actions.toggleInk();
         return;
       }
       if (key === 'j') {
